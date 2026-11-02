@@ -60,3 +60,6 @@ pc/t3e.txt
 CDP-*.png
 dist/.device-code
 cloud/*.zip
+# releases 目录要提交（用于分发）
+!releases/
+!releases/*

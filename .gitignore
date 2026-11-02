@@ -1,0 +1,62 @@
+# 密钥与凭据（绝对不能提交）
+.cloudbase-apikey
+**/.cloudbase-apikey
+*.key
+*.pem
+key.json
+
+# 浏览器自动化临时配置
+.cdp-profile/
+.cdp-profile-*/
+
+# 运行时产物
+*.log
+*.err
+dist/gw.log
+dist/gw.err
+dist/cloud.log
+dist/cloud.err
+dist/pty-raw.log
+
+# Rust 构建产物
+pc/target/
+target/
+
+# 依赖
+node_modules/
+.pnpm-store/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 本地临时脚本产物
+tools/*.png
+tools/*.json
+!tools/manifest.json
+tools/*.txt
+
+# 数据库导出的临时文件
+q.json
+r.json
+d.json
+x.json
+b.json
+up.json
+
+# 调试临时文件
+pc/t-err.txt
+pc/t-out.txt
+pc/t2.txt
+pc/t2e.txt
+pc/t3.txt
+pc/t3e.txt
+CDP-*.png
+dist/.device-code
+cloud/*.zip

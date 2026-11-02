@@ -1,0 +1,80 @@
+<view class="chat">
+  <!-- 左侧会话栏（抽屉） -->
+  <view class="drawer-mask" wx:if="{{drawerOpen}}" bindtap="closeDrawer"></view>
+  <view class="drawer {{drawerOpen ? 'drawer-open' : ''}}">
+    <view class="drawer-head">
+      <text class="drawer-title">对话</text>
+      <text class="drawer-new" bindtap="newChat">＋</text>
+    </view>
+    <scroll-view class="drawer-list" scroll-y>
+      <view class="sess {{item.id === currentId ? 'sess-on' : ''}}"
+            wx:for="{{sessions}}" wx:key="id"
+            data-id="{{item.id}}" bindtap="switchChat">
+        <view class="sess-name">{{item.agent}}</view>
+        <view class="sess-meta">{{item.preview || '新对话'}}</view>
+      </view>
+      <view class="drawer-empty" wx:if="{{sessions.length === 0}}">还没有对话</view>
+    </scroll-view>
+    <view class="drawer-foot">
+      <text class="drawer-dev">{{online ? deviceName : '未连接'}}</text>
+    </view>
+  </view>
+
+  <!-- 顶栏 -->
+  <view class="topbar">
+    <text class="topbar-menu" bindtap="openDrawer">☰</text>
+    <view class="topbar-mid">
+      <text class="topbar-title">{{currentAgent || '选择一个智能体'}}</text>
+      <text class="topbar-sub">{{online ? deviceName : '未连接'}}</text>
+    </view>
+    <text class="topbar-pick" bindtap="openPicker">切换</text>
+  </view>
+
+  <!-- 对话区 -->
+  <scroll-view class="msgs" scroll-y scroll-into-view="{{anchor}}" scroll-with-animation>
+    <view class="msg" wx:for="{{messages}}" wx:key="id" id="{{item.id}}">
+      <view class="bubble {{item.role === 'me' ? 'bubble-me' : 'bubble-ai'}}">{{item.text}}</view>
+      <text class="msg-time" wx:if="{{item.time}}">{{item.time}}</text>
+    </view>
+    <view class="msg" wx:if="{{busy}}">
+      <view class="bubble bubble-ai bubble-wait">对方正在输入…</view>
+    </view>
+    <view class="msgs-empty" wx:if="{{messages.length === 0 && !busy}}">
+      <text class="msgs-empty-title">{{currentAgent ? '和 ' + currentAgent + ' 开始对话' : '先选一个智能体'}}</text>
+      <text class="msgs-empty-sub">{{currentAgent ? '输入内容后按发送' : '点右上角「切换」选择'}}</text>
+    </view>
+    <view id="end" style="height:180rpx"></view>
+  </scroll-view>
+
+  <!-- 底部输入 -->
+  <view class="composer">
+    <textarea class="composer-input" value="{{draft}}" bindinput="onInput"
+              placeholder="{{currentAgent ? '发消息给 ' + currentAgent : '先选一个智能体'}}"
+              placeholder-class="ph" auto-height maxlength="2000"
+              confirm-type="send" bindconfirm="send" cursor-spacing="20"/>
+    <view class="composer-send {{draft ? 'send-on' : ''}}" bindtap="send">发送</view>
+  </view>
+
+  <!-- 智能体选择弹层 -->
+  <view class="picker-mask" wx:if="{{pickerOpen}}" bindtap="closePicker"></view>
+  <view class="picker {{pickerOpen ? 'picker-open' : ''}}">
+    <view class="picker-head">
+      <text class="picker-title">选择智能体</text>
+      <text class="picker-close" bindtap="closePicker">✕</text>
+    </view>
+    <scroll-view class="picker-list" scroll-y>
+      <view class="picker-item {{item.name === currentAgent ? 'picker-on' : ''}}"
+            wx:for="{{agents}}" wx:key="name"
+            data-name="{{item.name}}" data-exe="{{item.exe}}" data-headless="{{item.headless}}" bindtap="pickAgent">
+        <view class="picker-icon">{{item.initial}}</view>
+        <view class="picker-text">
+          <view class="picker-name">{{item.name}}</view>
+          <view class="picker-ver">{{item.version || '版本未知'}}{{item.headless === '1' ? ' · 直连' : ''}}</view>
+        </view>
+      </view>
+      <view class="picker-empty" wx:if="{{agents.length === 0}}">
+        {{online ? '电脑上没扫到已知智能体' : '还没连上电脑'}}
+      </view>
+    </scroll-view>
+  </view>
+</view>

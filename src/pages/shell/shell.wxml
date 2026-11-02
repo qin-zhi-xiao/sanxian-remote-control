@@ -1,0 +1,40 @@
+<view class="screen">
+  <view class="stack">
+    <view class="title-lg" style="text-align:center">选择终端环境</view>
+    <view class="sub" style="text-align:center;margin-top:12rpx">
+      <text class="dot {{online ? 'dot-on' : 'dot-off'}}"></text>{{online ? connectedName : '未连接'}}
+    </view>
+
+    <view class="shell-list">
+      <view class="shell-item {{shell === 'gitbash' ? 'shell-on' : ''}}" data-shell="gitbash" bindtap="pick">
+        <view class="shell-icon gitbash-icon">$_</view>
+        <view class="shell-text">
+          <view class="shell-name">Git Bash</view>
+          <view class="shell-desc">MINGW64 · 支持 git、node、npm</view>
+        </view>
+        <text class="shell-check" wx:if="{{shell === 'gitbash'}}">✓</text>
+      </view>
+
+      <view class="shell-item {{shell === 'cmd' ? 'shell-on' : ''}}" data-shell="cmd" bindtap="pick">
+        <view class="shell-icon cmd-icon">&gt;_</view>
+        <view class="shell-text">
+          <view class="shell-name">CMD</view>
+          <view class="shell-desc">Windows 命令提示符</view>
+        </view>
+        <text class="shell-check" wx:if="{{shell === 'cmd'}}">✓</text>
+      </view>
+
+      <view class="shell-item {{shell === 'powershell' ? 'shell-on' : ''}}" data-shell="powershell" bindtap="pick">
+        <view class="shell-icon ps-icon">PS</view>
+        <view class="shell-text">
+          <view class="shell-name">PowerShell</view>
+          <view class="shell-desc">对象管道 · 管理脚本</view>
+        </view>
+        <text class="shell-check" wx:if="{{shell === 'powershell'}}">✓</text>
+      </view>
+    </view>
+
+    <view class="sub" style="text-align:center;margin-top:24rpx;font-size:22rpx">{{hint}}</view>
+    <view class="btn-ghost" style="margin-top:36rpx" bindtap="back">返回</view>
+  </view>
+</view>

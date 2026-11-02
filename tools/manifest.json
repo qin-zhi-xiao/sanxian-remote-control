@@ -1,0 +1,124 @@
+{
+    "files":  [
+                  {
+                      "type":  "file",
+                      "name":  "app.js",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "dir",
+                      "name":  "utils",
+                      "parent":  null
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "utils/relay.js",
+                      "parent":  "utils"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "app.json",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "app.wxss",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/index/index.json",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/index/index.wxml",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/index/index.wxss",
+                      "parent":  "open"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/index/index.js",
+                      "parent":  "open"
+                  },
+                  {
+                      "name":  "pages/shell",
+                      "type":  "dir",
+                      "parent":  "pages"
+                  },
+                  {
+                      "name":  "pages/shell/shell.json",
+                      "type":  "file",
+                      "parent":  "pages/shell"
+                  },
+                  {
+                      "name":  "pages/shell/shell.wxml",
+                      "type":  "file",
+                      "parent":  "pages/shell"
+                  },
+                  {
+                      "name":  "pages/shell/shell.wxss",
+                      "type":  "file",
+                      "parent":  "pages/shell"
+                  },
+                  {
+                      "name":  "pages/shell/shell.js",
+                      "type":  "file",
+                      "parent":  "pages/shell"
+                  },
+                  {
+                      "type":  "dir",
+                      "name":  "pages/terminal",
+                      "parent":  "pages"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/terminal/terminal.json",
+                      "parent":  "pages/terminal"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/terminal/terminal.wxml",
+                      "parent":  "pages/terminal"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/terminal/terminal.wxss",
+                      "parent":  "pages/terminal"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/terminal/terminal.js",
+                      "parent":  "pages/terminal"
+                  },
+                  {
+                      "type":  "dir",
+                      "name":  "pages/agent",
+                      "parent":  "pages"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/agent/agent.json",
+                      "parent":  "pages/agent"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/agent/agent.wxml",
+                      "parent":  "pages/agent"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/agent/agent.wxss",
+                      "parent":  "pages/agent"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "pages/agent/agent.js",
+                      "parent":  "pages/agent"
+                  }
+              ]
+}

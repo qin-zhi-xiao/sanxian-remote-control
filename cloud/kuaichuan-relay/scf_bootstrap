@@ -1,0 +1,7 @@
+#!/bin/bash
+cd "$(dirname "$0")"
+export PATH=/var/lang/node20/bin:/var/lang/node18/bin:/var/lang/node16/bin:/usr/local/bin:/usr/bin:/bin:$PATH
+NODE_BIN=$(command -v node)
+if [ -z "$NODE_BIN" ]; then NODE_BIN=/var/lang/node20/bin/node; fi
+echo "[scf_bootstrap] using $NODE_BIN"
+exec "$NODE_BIN" index.js

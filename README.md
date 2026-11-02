@@ -25,3 +25,23 @@
 - 想知道最初的需求和设计 → `docs/快传-需求与方案-v0.1.md`
 - 想知道云开发怎么打通的、踩了哪些坑 → `docs/B方案-云开发中转打通记录.md`
 - 想知道版本迭代细节 → `docs/开发记录-v0.2.md`
+---
+
+## 📥 下载
+
+**Windows 客户端**（单文件，免安装，约 365 KB）
+
+- [kuaichuan.exe](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan.exe)
+- [zip 打包版（含启动脚本）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.3.0-win64.zip)
+
+### 首次使用
+
+1. 电脑上运行 `kuaichuan.exe --gw <网关地址> --code 886613`
+2. 微信打开小程序，填入配对码 `886613`
+3. 点「测试连接」，通过后可进终端或和智能体对话
+
+---
+
+## 版本
+
+当前 **v1.3.0** — [Release Notes](https://github.com/qin-zhi-xiao/sanxian-remote-control/releases/tag/v1.3.0)

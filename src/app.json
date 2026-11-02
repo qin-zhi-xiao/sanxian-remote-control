@@ -1,0 +1,16 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/shell/shell",
+    "pages/terminal/terminal",
+    "pages/agent/agent"
+  ],
+  "window": {
+    "backgroundTextStyle": "dark",
+    "backgroundColor": "#0b0c0e",
+    "navigationBarBackgroundColor": "#0b0c0e",
+    "navigationBarTitleText": "快传",
+    "navigationBarTextStyle": "white"
+  },
+  "style": "v2"
+}

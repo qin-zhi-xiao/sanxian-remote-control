@@ -1,0 +1,112 @@
+page {
+  background: #0b0c0e;
+  color: #e8eaed;
+  font-size: 28rpx;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 全屏居中骨架 */
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48rpx 40rpx;
+  box-sizing: border-box;
+}
+.stack { width: 100%; max-width: 560rpx; }
+
+.title-lg { font-size: 48rpx; font-weight: 600; letter-spacing: 2rpx; text-align: center; }
+.title-md { font-size: 34rpx; font-weight: 600; }
+.sub { font-size: 24rpx; color: #8b9199; }
+.mono { font-family: Consolas, "SF Mono", monospace; }
+
+/* 深色描边卡片 */
+.box {
+  background: #121418;
+  border: 1rpx solid #23272e;
+  border-radius: 16rpx;
+  padding: 26rpx;
+  box-sizing: border-box;
+}
+.box + .box { margin-top: 20rpx; }
+.box-press:active { background: #171a1f; }
+
+/* 主按钮：浅色反白，不用彩色 */
+.btn-primary {
+  background: #e8eaed;
+  color: #0b0c0e;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 84rpx;
+  text-align: center;
+}
+.btn-primary:active { background: #cfd3d8; }
+.btn-ghost {
+  background: transparent;
+  border: 1rpx solid #2c3138;
+  color: #c6cad0;
+  border-radius: 12rpx;
+  font-size: 26rpx;
+  line-height: 82rpx;
+  text-align: center;
+}
+.btn-ghost:active { background: #171a1f; }
+
+/* shell 切换分段控件 */
+.shell-row { margin-top: 16rpx; }
+.seg {
+  flex: 1;
+  text-align: center;
+  font-size: 24rpx;
+  line-height: 64rpx;
+  color: #8b9199;
+  border: 1rpx solid #2c3138;
+  border-radius: 10rpx;
+  margin-right: 10rpx;
+}
+.seg:last-child { margin-right: 0; }
+.seg-on {
+  background: #e8eaed;
+  color: #0b0c0e;
+  border-color: #e8eaed;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #0f1113;
+  border: 1rpx solid #23272e;
+  border-radius: 12rpx;
+  padding: 20rpx 22rpx;
+  color: #e8eaed;
+  font-size: 26rpx;
+}
+.input-ph { color: #5f656d; }
+
+.row { display: flex; align-items: center; justify-content: space-between; }
+.gap { margin-top: 18rpx; }
+.dot { width: 12rpx; height: 12rpx; border-radius: 50%; display: inline-block; margin-right: 10rpx; }
+.dot-on { background: #9aa0a6; }
+.dot-off { background: #3a3f46; }
+
+.out {
+  background: #0d0f11;
+  border: 1rpx solid #1e2227;
+  border-radius: 12rpx;
+  padding: 20rpx;
+  margin-top: 16rpx;
+  color: #b9bec4;
+  font-family: Consolas, monospace;
+  font-size: 23rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.state-on { color: #c6cad0; }
+.state-off { color: #6b7178; }
+.err { color: #8b9199; }

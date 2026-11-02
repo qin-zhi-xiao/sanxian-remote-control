@@ -1,0 +1,10 @@
+<view class="term">
+  <scroll-view class="out" scroll-y scroll-into-view="{{anchor}}">
+    <view class="line" wx:for="{{lines}}" wx:key="k"><block wx:for="{{item.segs}}" wx:for-item="seg" wx:for-index="si" wx:key="si"><text class="seg{{si}}" style="color:{{seg.c}}">{{seg.t}}</text></block></view>
+    <view id="end" style="height:60rpx"></view>
+  </scroll-view>
+
+  <input class="ghost" value="{{pending}}" bindinput="onInput" bindconfirm="onEnter"
+         confirm-type="send" confirm-hold="{{true}}" adjust-position="{{true}}"
+         cursor-spacing="24" focus="{{focused}}"/>
+</view>

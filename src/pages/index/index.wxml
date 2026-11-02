@@ -1,0 +1,69 @@
+<!-- 第一阶段：配置（首次打开占满全屏） -->
+<view class="screen" wx:if="{{stage === 'setup'}}">
+  <view class="stack">
+    <view class="title-lg">连接你的电脑</view>
+    <view class="sub" style="text-align:center;margin-top:14rpx">
+      在电脑上运行 kuaichuan.exe，它会把配对码写进云端
+    </view>
+
+    <view class="box box-press" wx:for="{{devices}}" wx:key="deviceCode"
+          data-code="{{item.deviceCode}}" data-name="{{item.name}}" bindtap="chooseDevice"
+          style="margin-top:24rpx">
+      <view class="row">
+        <text class="mono" style="font-size:27rpx">{{item.name || '未命名电脑'}}</text>
+        <text class="sub mono">{{item.deviceCode}}</text>
+      </view>
+      <view class="row" style="margin-top:10rpx">
+        <text class="sub mono" style="font-size:22rpx">{{item.agents.length || 0}} 个智能体</text>
+        <text class="sub {{isChosen(item.deviceCode) ? 'state-on' : 'state-off'}}" style="font-size:22rpx">
+          {{isChosen(item.deviceCode) ? '已选择' : '选择'}}
+        </text>
+      </view>
+    </view>
+
+    <view class="box" wx:if="{{devices.length === 0}}" style="margin-top:24rpx">
+      <text class="sub">还没发现电脑。检查 exe 是否在运行，然后点下面的「刷新」。</text>
+    </view>
+
+    <input class="input" style="margin-top:20rpx" placeholder="或手动输入配对码"
+           placeholder-class="input-ph" value="{{code}}" bindinput="onCode"/>
+
+    <view class="btn-primary" style="margin-top:24rpx" bindtap="testConnection">
+      {{testing ? '正在测试…' : '测试连接'}}
+    </view>
+    <view class="row" style="margin-top:16rpx">
+      <view class="btn-ghost" style="flex:1" bindtap="refresh">刷新</view>
+      <view style="width:16rpx"></view>
+      <view class="btn-ghost" style="flex:1" bindtap="toggleMock">{{mock ? '关闭模拟' : '先用模拟'}}</view>
+    </view>
+    <view class="sub" style="text-align:center;margin-top:20rpx;font-size:22rpx">{{hint}}</view>
+    <view class="sub" style="text-align:center;margin-top:8rpx;font-size:20rpx;color:#5f656d">云开发：{{cloudMsg}}</view>
+  </view>
+</view>
+
+<!-- 第二阶段：欢迎页（配置成功后） -->
+<view class="screen" wx:else>
+  <view class="stack">
+    <view class="title-lg" style="text-align:center">今天如何开始？</view>
+    <view class="sub" style="text-align:center;margin-top:12rpx">
+      <text class="dot {{online ? 'dot-on' : 'dot-off'}}"></text>{{online ? connectedName : '未连接'}}
+    </view>
+
+    <view class="box box-press" bindtap="goShell">
+      <view class="row">
+        <view class="title-md">终端</view>
+        <text class="sub mono">{{shellLabel}} ›</text>
+      </view>
+      <view class="sub" style="margin-top:10rpx">直接发命令、看输出。智能体卡住时，这里永远是兜底。</view>
+    </view>
+
+    <view class="box box-press" bindtap="goAgent">
+      <view class="title-md">终端与智能体</view>
+      <view class="sub" style="margin-top:10rpx">
+        {{agentCount > 0 ? '这台电脑上识别到 ' + agentCount + ' 个智能体' : '和电脑上的 Claude / Codex / Hermes / DSH 对话'}}
+      </view>
+    </view>
+
+    <view class="btn-ghost" style="margin-top:36rpx" bindtap="reconfigure">重新配置连接</view>
+  </view>
+</view>

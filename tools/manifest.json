@@ -119,6 +119,11 @@
                       "type":  "file",
                       "name":  "pages/agent/agent.js",
                       "parent":  "pages/agent"
+                  },
+                  {
+                      "type":  "file",
+                      "name":  "utils/net.js",
+                      "parent":  "utils"
                   }
               ]
 }

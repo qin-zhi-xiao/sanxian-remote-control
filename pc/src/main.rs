@@ -29,7 +29,7 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-const VERSION: &str = "0.1.0";
+const VERSION: &str = "1.4.0";
 static SESSION_CWD: Mutex<Option<String>> = Mutex::new(None);
 
 fn get_cwd() -> String {
@@ -413,12 +413,43 @@ fn handle_conn(mut stream: TcpStream, app: App) {
             respond(&mut stream, 200, &body, "application/json");
         }
         ("POST", "/agent") => {
-            let agent = json_str(&body_str, "agent").unwrap_or_default();
-            let body = format!(
-                "{{\"ok\":false,\"error\":\"agent 转发还没实现（v0.2 计划）\",\"agent\":\"{}\"}}",
-                esc(&agent)
-            );
-            respond(&mut stream, 501, &body, "application/json");
+            // 本地直连的 agent 对话接口（不经云端，用于验证与局域网使用）
+            let exe = json_str(&body_str, "exe")
+                .or_else(|| json_str(&body_str, "agent"))
+                .unwrap_or_default();
+            let text = json_str(&body_str, "text").unwrap_or_default();
+            if exe.trim().is_empty() || text.trim().is_empty() {
+                respond(&mut stream, 400, "{\"ok\":false,\"error\":\"需要 exe 和 text\"}", "application/json");
+                return;
+            }
+
+            let exe_lc = exe.to_lowercase();
+            let args: Vec<String> = if exe_lc.contains("dsh") {
+                vec!["--profile".into(), "headless".into(), text.clone()]
+            } else if exe_lc.contains("codex") {
+                vec!["exec".into(), "--skip-git-repo-check".into(), text.clone()]
+            } else if exe_lc.contains("hermes") {
+                vec!["-z".into(), text.clone()]
+            } else {
+                vec![text.clone()]
+            };
+
+            klog(&format!("    [本地 agent] {} {:?}", exe, args));
+            let started = now_ms();
+            match run_headless(&exe, &args, 180000) {
+                Ok(raw) => {
+                    let reply = strip_ansi(&raw);
+                    let body = format!(
+                        "{{\"ok\":true,\"agent\":\"{}\",\"reply\":\"{}\",\"ms\":{}}}",
+                        esc(&exe), esc(reply.trim()), now_ms() - started
+                    );
+                    respond(&mut stream, 200, &body, "application/json");
+                }
+                Err(e) => {
+                    let body = format!("{{\"ok\":false,\"error\":\"{}\"}}", esc(&e));
+                    respond(&mut stream, 500, &body, "application/json");
+                }
+            }
         }
         _ => respond(&mut stream, 404, "{\"ok\":false,\"error\":\"not found\"}", "application/json"),
     }
@@ -645,6 +676,11 @@ fn file_version(p: &Path) -> String {
     }
 }
 
+/// 单个智能体版本探测上限
+const PROBE_TIMEOUT_MS: u64 = 6000;
+/// 整轮探测总上限，超过就先返回已拿到的
+const PROBE_TOTAL_MS: u64 = 7000;
+
 fn detect_agents() -> Vec<AgentInfo> {
     let roots = search_roots();
 
@@ -671,7 +707,8 @@ fn detect_agents() -> Vec<AgentInfo> {
         }
     }
 
-    // 并行探测版本
+    // 并行探测版本：整体设一个截止时间，最慢的那个不许拖住启动
+    let deadline = Instant::now() + Duration::from_millis(PROBE_TOTAL_MS);
     let mut handles = Vec::new();
     for (name, exe, path) in jobs {
         handles.push(thread::spawn(move || {
@@ -688,7 +725,17 @@ fn detect_agents() -> Vec<AgentInfo> {
             }
         }));
     }
-    let mut found: Vec<AgentInfo> = handles.into_iter().filter_map(|h| h.join().ok()).collect();
+
+    let mut found: Vec<AgentInfo> = Vec::new();
+    for h in handles {
+        // 已经超过整体截止时间就跳过等待，迟到的结果下一轮重扫再补
+        if Instant::now() >= deadline {
+            continue;
+        }
+        if let Ok(a) = h.join() {
+            found.push(a);
+        }
+    }
     found.sort_by(|a, b| a.name.cmp(&b.name));
     found
 }
@@ -704,18 +751,25 @@ fn probe_version(p: &Path) -> String {
     match c.spawn() {
         Ok(mut ch) => {
             let start = Instant::now();
+            let mut killed = false;
             loop {
                 match ch.try_wait() {
                     Ok(Some(_)) => break,
                     Ok(None) => {
-                        if start.elapsed() > Duration::from_millis(8000) {
+                        if start.elapsed() > Duration::from_millis(PROBE_TIMEOUT_MS) {
                             let _ = ch.kill();
-                            return String::from("(版本超时)");
+                            killed = true;
+                            break;
                         }
                         thread::sleep(Duration::from_millis(30));
                     }
                     Err(_) => break,
                 }
+            }
+            if killed {
+                // kill 之后必须回收，否则僵尸进程挂着、管道也不会关
+                let _ = ch.wait();
+                return String::from("(版本超时)");
             }
             let mut buf = Vec::new();
             if let Some(mut o) = ch.stdout.take() {
@@ -1761,21 +1815,65 @@ fn which_exe(name: &str) -> Option<String> {
     }
     None
 }
+/// 从 npm 生成的 xxx.cmd 里解析出真正的 JS 入口
+fn npm_cmd_entry(cmd_path: &str) -> Option<String> {
+    let txt = std::fs::read_to_string(cmd_path).ok()?;
+    for line in txt.lines() {
+        // 形如: ... "%_prog%"  "%dp0%\node_modules\@scope\pkg\lib\bin.js" %*
+        if let Some(i) = line.find("node_modules\\") {
+            if let Some(start) = line[i..].find("node_modules\\") {
+                let rest = &line[i + start..];
+                if let Some(end) = rest.find(".js") {
+                    let rel = &rest[..end + 3];
+                    let dir = Path::new(cmd_path).parent()?;
+                    let full = dir.join(rel.replace('\\', "\\"));
+                    if full.is_file() {
+                        return Some(full.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// npm 目录旁通常有个 node.exe，优先用它
+fn node_near(cmd_path: &str) -> Option<String> {
+    let dir = Path::new(cmd_path).parent()?;
+    let cand = dir.join("node.exe");
+    if cand.is_file() {
+        return Some(cand.to_string_lossy().to_string());
+    }
+    which_exe("node.exe")
+}
 /// 直接跑一个进程并拿到它的 stdout（非交互模式，用于 headless agent）
 fn run_headless(exe: &str, args: &[String], timeout_ms: u64) -> Result<String, String> {
+    // .cmd 批处理经 cmd.exe 启动时会踩引号与权限的坑。
+    // npm 生成的 xxx.cmd 本质是 `node "…\lib\bin.js" %*`，
+    // 这里解析出 bin.js 直接用 node 调用，绕开中间层。
     let mut cmd_exe = exe.to_string();
+    let mut pre: Vec<String> = Vec::new();
     let lc = exe.to_lowercase();
+
     if lc.ends_with(".cmd") || lc.ends_with(".bat") {
-        cmd_exe = "cmd.exe".to_string();
+        if let Some(bin_js) = npm_cmd_entry(exe) {
+            let node = node_near(exe).unwrap_or_else(|| "node".to_string());
+            cmd_exe = node;
+            pre.push(bin_js);
+        } else {
+            cmd_exe = "cmd.exe".to_string();
+        }
     }
 
     let mut c = Command::new(&cmd_exe);
     if cmd_exe.eq_ignore_ascii_case("cmd.exe") {
-        c.arg("/C").arg(exe);
+        c.arg("/c").arg(exe);
     }
+    for p in pre { c.arg(p); }
     c.args(args);
     c.stdin(Stdio::null());
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
+    // 不额外注入 HOME/USERPROFILE：DSH 等程序会据此改写自身配置
     #[cfg(windows)]
     c.creation_flags(CREATE_NO_WINDOW);
 

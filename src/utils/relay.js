@@ -159,6 +159,33 @@ function termGetShell() {
 function termRestart() {
   return call('term_restart', { deviceCode: getDeviceCode() });
 }
+// ---- 智能体对话：局域网直连优先，不可达时回退云端 ----
+// 两条路径的返回值统一成 { ok, reply } / { ok, id } 的形式，界面不用关心走哪条
+function agentAsk(agent, exe, text) {
+  var net = require('./net.js');
+  return net.pick().then(function (mode) {
+    if (mode === 'lan') {
+      // 本地一次请求就拿答案，没有轮询
+      return net.lanRequest('/agent', 'POST', { exe: exe, agent: agent, text: text })
+        .then(function (r) {
+          if (!r || !r.ok) throw new Error((r && r.error) || '本地执行失败');
+          return { ok: true, mode: 'lan', reply: (r.reply || '').trim() || '（没有输出）' };
+        })
+        .catch(function (e) {
+          // 本地刚探测通过了却请求失败，强制重探后交给云端
+          return net.pick(true).then(function () {
+            throw new Error(e && e.message ? e.message : '本地失败');
+          });
+        });
+    }
+    // 云端：投递 + 轮询
+    return call('agent_send', { deviceCode: getDeviceCode(), agent: agent, exe: exe, text: text })
+      .then(function (r) {
+        if (!r || !r.ok) throw new Error((r && r.error) || '投递失败');
+        return { ok: true, mode: 'cloud', id: r.id };
+      });
+  });
+}
 function agentSend(agent, exe, text, headless) {
   return call('agent_send', { deviceCode: getDeviceCode(), agent: agent, exe: exe, text: text, headless: headless ? '1' : '0' });
 }
@@ -191,6 +218,7 @@ module.exports = {
   termSetShell: termSetShell,
   termGetShell: termGetShell,
   termRestart: termRestart,
+  agentAsk: agentAsk,
   agentSend: agentSend,
   agentResult: agentResult,
   cloudProbe: cloudProbe,

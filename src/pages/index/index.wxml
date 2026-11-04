@@ -28,6 +28,21 @@
     <input class="input" style="margin-top:20rpx" placeholder="或手动输入配对码"
            placeholder-class="input-ph" value="{{code}}" bindinput="onCode"/>
 
+    <view class="box" style="margin-top:20rpx">
+      <view class="row">
+        <text style="font-size:26rpx">局域网直连（可选）</text>
+        <text class="sub" style="font-size:20rpx">{{lanOk ? '可用' : '未启用'}}</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:6rpx">填电脑的局域网地址，同 WiFi 下直连更快、不花云端额度</view>
+      <input class="input" style="margin-top:14rpx" placeholder="例如 192.168.1.10:8765"
+             placeholder-class="input-ph" value="{{lanHost}}" bindinput="onLanHost"/>
+      <input class="input" style="margin-top:12rpx" placeholder="令牌（exe 启动时的 --token）"
+             placeholder-class="input-ph" value="{{lanToken}}" bindinput="onLanToken"/>
+      <view class="btn-ghost" style="margin-top:14rpx" bindtap="testLan">
+        {{lanTesting ? '正在探测…' : '探测局域网'}}
+      </view>
+    </view>
+
     <view class="btn-primary" style="margin-top:24rpx" bindtap="testConnection">
       {{testing ? '正在测试…' : '测试连接'}}
     </view>

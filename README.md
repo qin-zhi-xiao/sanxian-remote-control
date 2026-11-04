@@ -31,8 +31,8 @@
 
 **Windows 客户端**（单文件，免安装，约 365 KB）
 
-- [kuaichuan.exe](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan.exe)
-- [zip 打包版（含启动脚本）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.3.0-win64.zip)
+- [kuaichuan.exe](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.4.0.exe)
+- [zip 打包版（含启动脚本）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.4.0-win64.zip)
 
 ### 首次使用
 
@@ -44,4 +44,4 @@
 
 ## 版本
 
-当前 **v1.3.0** — [Release Notes](https://github.com/qin-zhi-xiao/sanxian-remote-control/releases/tag/v1.3.0)
+当前 **v1.4.0** — [Release Notes](https://github.com/qin-zhi-xiao/sanxian-remote-control/releases/tag/v1.4.0)

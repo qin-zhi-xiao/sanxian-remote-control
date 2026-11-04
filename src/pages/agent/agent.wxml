@@ -25,7 +25,7 @@
     <text class="topbar-menu" bindtap="openDrawer">☰</text>
     <view class="topbar-mid">
       <text class="topbar-title">{{currentAgent || '选择一个智能体'}}</text>
-      <text class="topbar-sub">{{online ? deviceName : '未连接'}}</text>
+      <text class="topbar-sub">{{online ? deviceName : '未连接'}}{{modeLabel ? ' · ' + modeLabel : ''}}</text>
     </view>
     <text class="topbar-pick" bindtap="openPicker">切换</text>
   </view>

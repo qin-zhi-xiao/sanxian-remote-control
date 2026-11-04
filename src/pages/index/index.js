@@ -7,6 +7,10 @@ Page({
     stage: 'setup',
     devices: [],
     code: '',
+    lanHost: '',
+    lanToken: '',
+    lanOk: false,
+    lanTesting: false,
     chosenCode: '',
     online: false,
     connectedName: '',
@@ -32,6 +36,7 @@ Page({
       shellLabel: savedLabel,
       stage: done && code ? 'home' : 'setup'
     });
+    this.loadLan();
     this.refresh();
     var self = this;
     relay.cloudProbe().then(function (r) {
@@ -53,6 +58,44 @@ Page({
     return code === this.data.chosenCode;
   },
 
+
+  // ---- 局域网直连配置 ----
+  loadLan: function () {
+    var net = require('../../utils/net.js');
+    this.setData({
+      lanHost: net.getLanHost(),
+      lanToken: net.getLanToken()
+    });
+  },
+
+  onLanHost: function (e) {
+    var net = require('../../utils/net.js');
+    net.setLanHost(e.detail.value);
+    this.setData({ lanHost: e.detail.value, lanOk: false });
+  },
+
+  onLanToken: function (e) {
+    var net = require('../../utils/net.js');
+    net.setLanToken(e.detail.value);
+    this.setData({ lanToken: e.detail.value });
+  },
+
+  testLan: function () {
+    var self = this;
+    var net = require('../../utils/net.js');
+    if (!net.getLanHost()) {
+      this.setData({ hint: '先填电脑的局域网地址，例如 192.168.1.10:8765' });
+      return;
+    }
+    this.setData({ lanTesting: true, hint: '正在探测 ' + net.lanBase() + ' …' });
+    net.probeLan().then(function (ok) {
+      self.setData({
+        lanTesting: false,
+        lanOk: ok,
+        hint: ok ? '局域网直连可用：同 WiFi 下会自动走本地' : '探测失败，检查地址、令牌和防火墙'
+      });
+    });
+  },
   refresh: function () {
     var self = this;
     relay.listDevices().then(function (list) {
@@ -188,6 +231,7 @@ Page({
   reconfigure: function () {
     wx.removeStorageSync(SETUP_KEY);
     this.setData({ stage: 'setup' });
+    this.loadLan();
     this.refresh();
   },
 

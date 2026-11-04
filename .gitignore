@@ -63,3 +63,5 @@ cloud/*.zip
 # releases 目录要提交（用于分发）
 !releases/
 !releases/*
+# 构建产物由 releases/ 提供，dist 里的不进版本库
+dist/kuaichuan.exe

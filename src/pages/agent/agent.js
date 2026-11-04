@@ -27,6 +27,7 @@ Page({
     busy: false,
     drawerOpen: false,
     pickerOpen: false,
+    modeLabel: '',
     anchor: 'end'
   },
 
@@ -43,7 +44,18 @@ Page({
     this.loadAgents();
   },
 
-  onShow: function () { this.loadAgents(); },
+  onShow: function () {
+    this.loadAgents();
+    this.refreshMode();
+  },
+
+  refreshMode: function () {
+    var self = this;
+    var net = require('../../utils/net.js');
+    net.pick().then(function (mode) {
+      self.setData({ modeLabel: mode === 'lan' ? '局域网直连' : '云端中转' });
+    });
+  },
 
   loadAgents: function () {
     var self = this;
@@ -182,15 +194,20 @@ Page({
     this.setData({ messages: list, draft: '', busy: true, anchor: 'end' });
     this.persist();
 
-    // 发给电脑端的常驻 agent 会话（不是每次新起进程）
+    // 自动分流：同一局域网走本地直连，否则走云端中转
     var exe = (this.exeMap && this.exeMap[this.data.currentAgent]) || this.data.currentAgent;
-    var hl = (this.exeHeadless && this.exeHeadless[this.data.currentAgent]) || '0';
-    relay.agentSend(this.data.currentAgent, exe, text, hl === '1').then(function (r) {
+    relay.agentAsk(this.data.currentAgent, exe, text).then(function (r) {
       if (!r || !r.ok) {
         self.fillReply('（发送失败：' + ((r && r.error) || '未知错误') + '）');
         return;
       }
-      self.pollAgent(r.id);
+      self.setData({ modeLabel: r.mode === 'lan' ? '局域网直连' : '云端中转' });
+      if (r.mode === 'lan') {
+        // 本地一次就拿到答案，不用轮询
+        self.fillReply(r.reply);
+      } else {
+        self.pollAgent(r.id);
+      }
     }).catch(function (err) {
       self.fillReply('（发送失败：' + (err && err.message ? err.message : err) + '）');
     });

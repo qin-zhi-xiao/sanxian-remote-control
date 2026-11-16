@@ -30,6 +30,212 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const VERSION: &str = "1.4.0";
+
+/// 进程启动时间（毫秒时间戳），控制台用来算运行时长
+static START_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 网页控制台：取代黑窗口，浏览器里看状态、改配置、看日志
+const CONSOLE_HTML: &str = r####"<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>快传 · 电脑端控制台</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b0c0e;color:#c6cad0;font:14px/1.6 -apple-system,"Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:18px 24px;border-bottom:1px solid #1d2027;position:sticky;top:0;background:#0b0c0e;z-index:9}
+h1{font-size:17px;margin:0;color:#e8eaed;font-weight:600}
+.ver{font-size:12px;color:#5a6068}
+.pill{margin-left:auto;font-size:12px;padding:4px 12px;border-radius:99px;border:1px solid #23272e;color:#8b9199}
+.pill.on{color:#5fd08a;border-color:#1e3a2a;background:#0f1a14}
+.pill.off{color:#e0846f;border-color:#3a2226;background:#1a0f10}
+main{padding:20px 24px;max-width:1100px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.card{background:#121418;border:1px solid #1d2027;border-radius:10px;padding:14px 16px}
+.card label{display:block;font-size:12px;color:#5a6068;margin-bottom:6px}
+.card b{font-size:20px;color:#e8eaed;font-weight:600;word-break:break-all}
+.card b.mono{font-family:ui-monospace,Consolas,monospace;font-size:16px}
+h2{font-size:14px;color:#8b9199;margin:26px 0 10px;font-weight:600}
+.row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#121418;border:1px solid #1d2027;border-radius:8px;margin-bottom:8px}
+.row .n{color:#e8eaed}
+.row .p{font-size:12px;color:#4d535a;font-family:ui-monospace,monospace;margin-left:auto;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tag{font-size:11px;color:#8fb4d9;background:#151a21;border:1px solid #232b36;border-radius:5px;padding:1px 7px}
+pre{background:#0e1013;border:1px solid #1d2027;border-radius:8px;padding:14px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.7;color:#8b9199;max-height:320px;overflow:auto;margin:0;white-space:pre-wrap}
+button{background:#1a1f26;color:#c6cad0;border:1px solid #2c3138;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}
+button:hover{background:#222832}
+button.primary{background:#e8eaed;color:#0b0c0e;border-color:#e8eaed}
+.empty{color:#4d535a;font-size:13px;padding:14px}
+</style></head><body>
+<header>
+  <h1>快传 · 电脑控制端</h1><span class="ver" id="ver"></span>
+  <span class="pill" id="state">连接中…</span>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><label>配对码</label><b class="mono" id="code">-</b></div>
+    <div class="card"><label>运行模式</label><b id="mode">-</b></div>
+    <div class="card"><label>运行时长</label><b id="up">-</b></div>
+    <div class="card"><label>已识别智能体</label><b id="agc">-</b></div>
+  </div>
+
+  <h2>智能体</h2>
+  <div id="agents"><div class="empty">读取中…</div></div>
+
+  <h2>设备归属</h2>
+  <div class="row">
+    <span class="n" id="ownTxt">查询中…</span>
+    <button id="unbindBtn" style="margin-left:auto;display:none">解除绑定</button>
+  </div>
+  <div class="sub" style="font-size:12px;color:#4d535a;margin-top:6px">
+    解除后这台电脑变成未归属，手机上要用配对码重新接入
+  </div>
+
+  <h2>配置文件</h2>
+  <div id="cfgs"><div class="empty">读取中…</div></div>
+  <div id="editorBox" style="display:none;margin-top:12px">
+    <div class="row"><span class="n" id="edName">-</span><span class="p" id="edPath"></span></div>
+    <textarea id="ed" style="width:100%;height:300px;background:#0e1013;border:1px solid #1d2027;border-radius:8px;padding:12px;color:#c6cad0;font:12px/1.7 ui-monospace,Consolas,monospace;resize:vertical"></textarea>
+    <div style="margin-top:10px;display:flex;gap:10px">
+      <button class="primary" id="saveBtn">保存到磁盘</button>
+      <button id="closeBtn">关闭</button>
+      <span style="font-size:12px;color:#5a6068;align-self:center" id="edHint"></span>
+    </div>
+  </div>
+
+  <h2>运行日志</h2>
+  <pre id="log">读取中…</pre>
+  <div style="margin-top:10px"><button id="refreshLog">刷新日志</button></div>
+</main>
+<script>
+var Q = new URLSearchParams(location.search);
+var T = Q.get('t') || '';
+
+function hdr() { return { 'X-KC-Token': T, 'Content-Type': 'application/json' }; }
+function api(p, opt) {
+  return fetch(p + (p.indexOf('?') >= 0 ? '&' : '?') + 't=' + encodeURIComponent(T), opt)
+    .then(function (r) { return r.json(); });
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+function dur(ms) {
+  var s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600),
+      m = Math.floor(s % 3600 / 60), ss = s % 60;
+  if (d) return d + '天' + h + '小时';
+  if (h) return h + '小时' + m + '分';
+  if (m) return m + '分' + ss + '秒';
+  return ss + '秒';
+}
+
+function loadStatus() {
+  api('/status').then(function (s) {
+    if (!s || !s.ok) { document.getElementById('state').textContent = '需配对码'; return; }
+    document.getElementById('ver').textContent = 'v' + s.version;
+    document.getElementById('code').textContent = s.code || '-';
+    document.getElementById('mode').textContent = s.modeLabel || s.mode;
+    document.getElementById('up').textContent = dur(s.uptimeMs);
+    document.getElementById('agc').textContent = (s.agents || []).length;
+    var st = document.getElementById('state');
+    st.textContent = s.gateway ? '云端已连接' : '本地待连接';
+    st.className = 'pill ' + (s.gateway ? 'on' : 'off');
+
+    var box = document.getElementById('agents');
+    if (!s.agents || !s.agents.length) { box.innerHTML = '<div class="empty">没扫到已知智能体</div>'; return; }
+    box.innerHTML = s.agents.map(function (a) {
+      return '<div class="row"><span class="n">' + esc(a.name) + '</span>' +
+             '<span class="tag">' + esc(a.version || '未知') + '</span>' +
+             '<span class="p" title="' + esc(a.path) + '">' + esc(a.path) + '</span></div>';
+    }).join('');
+  }).catch(function () {
+    document.getElementById('state').textContent = '连不上服务';
+    document.getElementById('state').className = 'pill off';
+  });
+}
+
+function loadOwner() {
+  api('/owner').then(function (r) {
+    var el = document.getElementById('ownTxt');
+    var btn = document.getElementById('unbindBtn');
+    if (!r || !r.ok) { el.textContent = '查询失败'; return; }
+    if (r.bound) {
+      el.textContent = '已绑定：' + (r.owner || '某个账号');
+      btn.style.display = 'inline-block';
+    } else {
+      el.textContent = r.note || '未绑定任何账号';
+      btn.style.display = 'none';
+    }
+  }).catch(function () {
+    document.getElementById('ownTxt').textContent = '查询失败（需要云端模式）';
+  });
+}
+document.getElementById('unbindBtn').onclick = function () {
+  if (!confirm('解除这台电脑的绑定？手机上需要用配对码重新接入。')) return;
+  api('/unbind', { method: 'POST', headers: hdr(), body: '{}' }).then(function (r) {
+    if (r && r.ok) { alert('已解除绑定'); loadOwner(); }
+    else { alert('失败：' + ((r && r.error) || '未知')); }
+  });
+};
+
+function loadCfgs() {
+  api('/configs').then(function (r) {
+    var box = document.getElementById('cfgs');
+    if (!r || !r.ok || !r.list || !r.list.length) { box.innerHTML = '<div class="empty">没有可编辑的配置</div>'; return; }
+    box.innerHTML = r.list.map(function (c, i) {
+      return '<div class="row" style="cursor:pointer" data-i="' + i + '">' +
+        '<span class="n">' + esc(c.agent) + ' · ' + esc(c.label) + '</span>' +
+        '<span class="tag">' + (c.exists ? Math.round(c.size / 1024 * 10) / 10 + ' KB' : '不存在') + '</span>' +
+        '<span class="p" title="' + esc(c.path) + '">' + esc(c.path) + '</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.row'), function (el) {
+      el.onclick = function () { openCfg(r.list[+el.getAttribute('data-i')]); };
+    });
+  }).catch(function () { });
+}
+
+var CUR = null;
+function openCfg(c) {
+  CUR = c;
+  api('/config_read', { method: 'POST', headers: hdr(), body: JSON.stringify({ id: c.id }) })
+    .then(function (r) {
+      if (!r || !r.ok) { alert(r && r.error || '读取失败'); return; }
+      document.getElementById('editorBox').style.display = 'block';
+      document.getElementById('edName').textContent = c.agent + ' · ' + c.label;
+      document.getElementById('edPath').textContent = c.path;
+      document.getElementById('ed').value = r.content || '';
+      document.getElementById('edHint').textContent = r.masked
+        ? '含密钥字段已打码（__KC_MASKED__），保存时会自动换回原值' : '';
+    });
+}
+document.getElementById('saveBtn').onclick = function () {
+  if (!CUR) return;
+  if (!confirm('保存到 ' + CUR.path + '？会先备份一份原文件。')) return;
+  api('/config_write', {
+    method: 'POST', headers: hdr(),
+    body: JSON.stringify({ id: CUR.id, content: document.getElementById('ed').value })
+  }).then(function (r) {
+    if (r && r.ok) { alert('已保存' + (r.backup ? '\n备份：' + r.backup : '')); loadCfgs(); }
+    else { alert('写入失败：' + ((r && r.error) || '未知')); }
+  });
+};
+document.getElementById('closeBtn').onclick = function () {
+  document.getElementById('editorBox').style.display = 'none';
+  CUR = null;
+};
+
+function loadLog() {
+  api('/log').then(function (r) {
+    document.getElementById('log').textContent = (r && r.text) || '（没有日志）';
+  }).catch(function () { document.getElementById('log').textContent = '（读取失败）'; });
+}
+document.getElementById('refreshLog').onclick = loadLog;
+
+loadStatus(); loadCfgs(); loadLog(); loadOwner();
+setInterval(loadStatus, 3000);
+setInterval(loadLog, 5000);
+</script>
+</body></html>"####;
+
 static SESSION_CWD: Mutex<Option<String>> = Mutex::new(None);
 
 fn get_cwd() -> String {
@@ -40,6 +246,7 @@ fn set_cwd(v: &str) {
 }
 const MAX_OUT: usize = 8192;
 
+#[derive(Clone)]
 struct Config {
     port: u16,
     token: String,
@@ -85,8 +292,26 @@ fn main() {
     #[cfg(windows)]
     unsafe {
         // 关键：本进程不能持有控制台，否则子进程会继承它而不是伪终端
-        let freed = pty::FreeConsole();
-        println!("[启动] FreeConsole={}", freed);
+        pty::FreeConsole();
+        // 放开之后立刻挂回父控制台，否则后面所有 println! 都进了黑洞，
+        // 用户在 PowerShell 里看不到任何启动信息和报错
+        if pty::AttachConsole(u32::MAX) != 0 {
+            // Rust 的 println! 走 GetStdHandle，不是 CRT 的 fd，
+            // 所以必须用 SetStdHandle 换掉标准输出句柄，dup2 没用
+            let h = pty::CreateFileA(
+                b"CONOUT$\0".as_ptr(),
+                0x8000_0000 | 0x4000_0000, // GENERIC_READ|GENERIC_WRITE
+                1 | 2,                     // FILE_SHARE_READ|WRITE
+                core::ptr::null_mut(),
+                3,                         // OPEN_EXISTING
+                0,
+                core::ptr::null_mut(),
+            );
+            if h != core::ptr::null_mut() && h as isize != -1 {
+                pty::SetStdHandle(0xFFFF_FFF5, h); // STD_OUTPUT_HANDLE
+                pty::SetStdHandle(0xFFFF_FFF4, h); // STD_ERROR_HANDLE
+            }
+        }
     }
     let mut cfg = Config {
         port: 8765,
@@ -166,11 +391,70 @@ fn main() {
         i += 1;
     }
 
+    // 令牌优先级：显式 --token > 配对码 --code > 随机
+    // 用配对码当令牌，小程序拿到设备记录就能连着直连局域网，不用额外记一串码
     if cfg.token.is_empty() {
-        cfg.token = gen_token();
+        if !cfg.device_code.is_empty() {
+            cfg.token = cfg.device_code.clone();
+        } else {
+            cfg.token = gen_token();
+        }
     }
 
+    START_MS.store(now_ms() as u64, std::sync::atomic::Ordering::Relaxed);
+
     if cfg.gw {
+        // 云端模式也要有个本地控制台：一个进程干两件事，
+        // 手机走云端中转，主人在电脑上打开网页看状态。
+        {
+            // 云端模式下同时监听 0.0.0.0：手机在同一 WiFi 就直连，
+            // 不在同一网才走云端中转。两条路并存，谁快走谁。
+            let addr = format!("0.0.0.0:{}", cfg.port);
+            let app = App {
+                cfg: Arc::new(cfg.clone()),
+                agents: Arc::new(Mutex::new(Vec::new())),
+            };
+            let app_probe = app.clone();
+            thread::spawn(move || {
+                let list = detect_agents();
+                *app_probe.agents.lock().unwrap() = list;
+            });
+            let app_srv = app.clone();
+            let console_url = format!("http://127.0.0.1:{}/?t={}", cfg.port, cfg.token);
+            let lan_url = local_ip().ok().map(|ip| format!("http://{}:{}/?t={}", ip, cfg.port, cfg.token));
+            thread::spawn(move || {
+                match TcpListener::bind(&addr) {
+                    Err(e) => {
+                        // 云端模式下绑不上端口必须退出：
+                        // 否则第二份进程会连着同一个云端任务队列，同一条命令被执行两次
+                        println!("  ! 端口 {} 被占用，无法启动控制台: {}", cfg.port, e);
+                        println!("    已有实例在跑？先关掉它，或换 --port");
+                        std::process::exit(1);
+                    }
+                    Ok(l) => {
+                        println!();
+                        println!("  ┌─────────────────────────────────────────");
+                        println!("  │ 控制台  {}", console_url);
+                        if let Some(u) = lan_url {
+                            println!("  │ 局域网  {}", u);
+                        }
+                        println!("  └─────────────────────────────────────────");
+                        // 顺手把控制台在默认浏览器里打开：
+                        // 走 explorer 而不是 cmd/start，这样不会闪一个黑窗口出来。
+                        let _ = Command::new("explorer").arg(&console_url).spawn();
+                        for s in l.incoming() {
+                            if let Ok(s) = s {
+                                let a = app_srv.clone();
+                                thread::spawn(move || handle_conn(s, a));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("  ! 控制台端口 {} 被占用（{}），网页控制台不可用", cfg.port, e);
+                    }
+                }
+            });
+        }
         run_gateway(cfg);
         return;
     }
@@ -354,14 +638,135 @@ fn handle_conn(mut stream: TcpStream, app: App) {
         return;
     }
 
-    let need_token = path != "/ping";
+    // 控制台页面本身不需要配对码，但它的 API 需要。
+    // 配对码也可以从 URL 的 ?t= 传进来，方便直接点开链接。
+    if token_hdr.is_empty() {
+        if let Some(qs) = path_full.split('?').nth(1) {
+            for kv in qs.split('&') {
+                if let Some(v) = kv.strip_prefix("t=") {
+                    token_hdr = v.to_string();
+                }
+            }
+        }
+    }
+    let need_token = path != "/ping" && path != "/" && path != "/favicon.ico";
     if need_token && token_hdr != app.cfg.token {
         respond(&mut stream, 401, &format!("{{\"ok\":false,\"error\":\"token mismatch\",\"needToken\":true}}"), "application/json");
         return;
     }
 
     match (method.as_str(), path.as_str()) {
-        ("GET", "/ping") => {
+        // 这台电脑归谁 —— 控制台上显示
+        // 调试用：倒出常驻 Shell 的原始输出流
+        ("GET", "/raw") => {
+            let s = if let Ok(g) = TERM.lock() {
+                match g.as_ref() {
+                    Some(ts) => ts.raw.lock().map(|r| r.clone()).unwrap_or_default(),
+                    None => String::from("<无会话>"),
+                }
+            } else {
+                String::from("<锁失败>")
+            };
+            let tail = if s.len() > 3000 { &s[s.len() - 3000..] } else { &s[..] };
+            let body = format!("{{\"ok\":true,\"len\":{},\"raw\":\"{}\"}}", s.len(), esc(tail));
+            respond(&mut stream, 200, &body, "application/json");
+        }
+        ("GET", "/owner") => {
+            // 注意：不要把「调用失败」伪装成「模式不支持」，
+            // 之前就是这么写的，导致云端模式下也显示「仅云端模式可用」，误导排查
+            if app.cfg.gw_url.is_empty() {
+                respond(&mut stream, 200,
+                    "{\"ok\":true,\"bound\":false,\"owner\":\"\",\"note\":\"当前不是云端模式，查不到归属\"}",
+                    "application/json");
+                return;
+            }
+            let body = format!("{{\"action\":\"device_self_status\",\"deviceCode\":\"{}\"}}",
+                gw_json_url(&app.cfg.device_code));
+            let key = match read_key() {
+                Some(k) => k,
+                None => {
+                    respond(&mut stream, 500,
+                        "{\"ok\":false,\"error\":\"找不到 .cloudbase-apikey（要和 exe 放同一目录）\"}",
+                        "application/json");
+                    return;
+                }
+            };
+            match gw_call(&app.cfg.gw_url, &key, &body) {
+                Ok(r) => respond(&mut stream, 200, &r, "application/json"),
+                Err(e) => {
+                    let b = format!("{{\"ok\":false,\"error\":\"云端查询失败: {}\"}}", esc(&e));
+                    respond(&mut stream, 502, &b, "application/json");
+                }
+            }
+        }
+        ("POST", "/unbind") => {
+            if app.cfg.gw_url.is_empty() {
+                respond(&mut stream, 400, "{\"ok\":false,\"error\":\"仅云端模式可解绑\"}", "application/json");
+                return;
+            }
+            let key = match read_key() {
+                Some(k) => k,
+                None => {
+                    respond(&mut stream, 500, "{\"ok\":false,\"error\":\"找不到 API Key\"}", "application/json");
+                    return;
+                }
+            };
+            let body = format!("{{\"action\":\"device_self_release\",\"deviceCode\":\"{}\"}}",
+                gw_json_url(&app.cfg.device_code));
+            match gw_call(&app.cfg.gw_url, &key, &body) {
+                Ok(r) => respond(&mut stream, 200, &r, "application/json"),
+                Err(e) => {
+                    let b = format!("{{\"ok\":false,\"error\":\"{}\"}}", esc(&e));
+                    respond(&mut stream, 500, &b, "application/json");
+                }
+            }
+        }
+        // ---- 网页控制台 ----
+        ("GET", "/") => {
+            respond(&mut stream, 200, CONSOLE_HTML, "text/html; charset=utf-8");
+        }
+        ("GET", "/favicon.ico") => {
+            respond(&mut stream, 204, "", "text/plain");
+        }
+        ("GET", "/status") => {
+            let agents = app.agents.lock().unwrap().clone();
+            let start = START_MS.load(std::sync::atomic::Ordering::Relaxed);
+            let now = now_ms() as u64;
+            let uptime = if start > 0 && now > start { now - start } else { 0 };
+            let mode = if !app.cfg.gw_url.is_empty() {
+                "gw"
+            } else if app.cfg.lan {
+                "lan"
+            } else {
+                "local"
+            };
+            let mode_label = match mode {
+                "gw" => "云端中转",
+                "lan" => "局域网",
+                _ => "本机",
+            };
+            let body = format!(
+                "{{\"ok\":true,\"version\":\"{}\",\"code\":\"{}\",\"mode\":\"{}\",\"modeLabel\":\"{}\",\"port\":{},\"gateway\":\"{}\",\"uptimeMs\":{},\"agents\":{}}}",
+                VERSION, esc(&app.cfg.token), mode, mode_label, app.cfg.port,
+                esc(&app.cfg.gw_url), uptime, agents_json(&agents)
+            );
+            respond(&mut stream, 200, &body, "application/json");
+        }
+        ("GET", "/log") => {
+            // 读 exe 同目录的 gw.log 尾部
+            let dir = std::env::current_exe().ok()
+                .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+            let mut text = String::new();
+            if let Some(d) = dir {
+                if let Ok(all) = std::fs::read_to_string(d.join("gw.log")) {
+                    let lines: Vec<&str> = all.lines().collect();
+                    let start = lines.len().saturating_sub(200);
+                    text = lines[start..].join("\n");
+                }
+            }
+            let body = format!("{{\"ok\":true,\"text\":\"{}\"}}", esc(&text));
+            respond(&mut stream, 200, &body, "application/json");
+        }        ("GET", "/ping") => {
             let body = format!(
                 "{{\"ok\":true,\"app\":\"kuaichuan\",\"version\":\"{}\",\"needToken\":true}}",
                 VERSION
@@ -385,6 +790,114 @@ fn handle_conn(mut stream: TcpStream, app: App) {
             let body = format!("{{\"ok\":true,\"agents\":{}}}", agents_json(&agents));
             respond(&mut stream, 200, &body, "application/json");
         }
+        // 配置文件白名单：只暴露这些，别的路径一律拒绝
+        ("GET", "/configs") => {
+            let mut items: Vec<String> = Vec::new();
+            for c in config_allowlist() {
+                let exists = c.path.is_file();
+                let size = if exists { std::fs::metadata(&c.path).map(|m| m.len()).unwrap_or(0) } else { 0 };
+                let modified = if exists {
+                    std::fs::metadata(&c.path).ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0)
+                } else { 0 };
+                items.push(format!(
+                    "{{\"id\":\"{}\",\"agent\":\"{}\",\"label\":\"{}\",\"path\":\"{}\",\"exists\":{},\"size\":{},\"modified\":{}}}",
+                    esc(&c.id), esc(c.agent), esc(c.label),
+                    esc(&c.path.to_string_lossy()), exists, size, modified
+                ));
+            }
+            let body = format!("{{\"ok\":true,\"list\":[{}]}}", items.join(","));
+            respond(&mut stream, 200, &body, "application/json");
+        }
+        ("POST", "/config_read") => {
+            let id = json_str(&body_str, "id").unwrap_or_default();
+            let hit = config_allowlist().into_iter().find(|c| c.id == id);
+            let c = match hit {
+                Some(c) => c,
+                None => {
+                    respond(&mut stream, 403, "{\"ok\":false,\"error\":\"不在允许列表里\"}", "application/json");
+                    return;
+                }
+            };
+            if !c.path.is_file() {
+                respond(&mut stream, 404, "{\"ok\":false,\"error\":\"文件不存在\"}", "application/json");
+                return;
+            }
+            match std::fs::read_to_string(&c.path) {
+                Ok(mut text) => {
+                    // 太长的不适合在手机上编辑
+                    if text.len() > 200_000 {
+                        text.truncate(200_000);
+                        text.push_str("\n…（内容过长，已截断）");
+                    }
+                    let truncated = text.len() >= 200_000;
+                    let masked = mask_secrets(&text);
+                    let body = format!(
+                        "{{\"ok\":true,\"id\":\"{}\",\"content\":\"{}\",\"truncated\":{},\"masked\":{}}}",
+                        esc(&c.id), esc(&masked), truncated, masked.contains(MASK)
+                    );
+                    respond(&mut stream, 200, &body, "application/json");
+                }
+                Err(e) => {
+                    let body = format!("{{\"ok\":false,\"error\":\"读取失败: {}\"}}", esc(&e.to_string()));
+                    respond(&mut stream, 500, &body, "application/json");
+                }
+            }
+        }
+        ("POST", "/config_write") => {
+            let id = json_str(&body_str, "id").unwrap_or_default();
+            let content = json_str(&body_str, "content").unwrap_or_default();
+            let hit = config_allowlist().into_iter().find(|c| c.id == id);
+            let c = match hit {
+                Some(c) => c,
+                None => {
+                    respond(&mut stream, 403, "{\"ok\":false,\"error\":\"不在允许列表里\"}", "application/json");
+                    return;
+                }
+            };
+            // 读原文件，把 __KC_MASKED__ 还原成真实值，否则会把 Key 写成占位符
+            let content = if content.contains(MASK) && c.path.is_file() {
+                match std::fs::read_to_string(&c.path) {
+                    Ok(old) => restore_masked(&content, &old),
+                    Err(_) => content,
+                }
+            } else {
+                content
+            };
+
+            // 写之前先备份一份，改坏了能找回
+            let bak = if c.path.is_file() {
+                let b = c.path.with_extension(format!("bak-{}",
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs()).unwrap_or(0)));
+                match std::fs::copy(&c.path, &b) {
+                    Ok(_) => Some(b),
+                    Err(_) => None,
+                }
+            } else { None };
+
+            if let Some(dir) = c.path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            match std::fs::write(&c.path, content.as_bytes()) {
+                Ok(_) => {
+                    klog(&format!("    [config] 写入 {}", c.path.to_string_lossy()));
+                    let body = format!(
+                        "{{\"ok\":true,\"id\":\"{}\",\"backup\":\"{}\"}}",
+                        esc(&c.id),
+                        esc(&bak.map(|p| p.to_string_lossy().to_string()).unwrap_or_default())
+                    );
+                    respond(&mut stream, 200, &body, "application/json");
+                }
+                Err(e) => {
+                    let body = format!("{{\"ok\":false,\"error\":\"写入失败: {}\"}}", esc(&e.to_string()));
+                    respond(&mut stream, 500, &body, "application/json");
+                }
+            }
+        }
         ("POST", "/exec") => {
             let cmd = json_str(&body_str, "cmd").unwrap_or_default();
             if cmd.trim().is_empty() {
@@ -400,15 +913,25 @@ fn handle_conn(mut stream: TcpStream, app: App) {
             }
             let cwd = json_str(&body_str, "cwd").unwrap_or_default();
             let tmo = json_num(&body_str, "timeoutMs").unwrap_or(app.cfg.timeout_ms);
-            let r = run_cmd(&cmd, &cwd, tmo);
+
+            // 走常驻 Shell：cd、export 这类状态能延续到下一条命令，
+            // 不再每条都新起一个进程（以前 cd 完再 pwd 还是老目录）
+            let started = now_ms();
+            if !cwd.trim().is_empty() {
+                let _ = term_run(&format!("cd \"{}\"", cwd.trim().trim_matches('"')), 8000);
+            }
+            let (ok, out, err, code) = match term_run(&cmd, tmo) {
+                Ok((o, c)) => (true, o, String::new(), c),
+                Err(e) => (false, String::new(), e, 1),
+            };
             let body = format!(
-                "{{\"ok\":true,\"cmd\":\"{}\",\"exitCode\":{},\"stdout\":\"{}\",\"stderr\":\"{}\",\"ms\":{},\"timedOut\":{}}}",
+                "{{\"ok\":{},\"cmd\":\"{}\",\"exitCode\":{},\"stdout\":\"{}\",\"stderr\":\"{}\",\"shell\":\"persistent\",\"ms\":{},\"timedOut\":false}}",
+                ok,
                 esc(&cmd),
-                r.exit_code,
-                esc(&r.stdout),
-                esc(&r.stderr),
-                r.ms,
-                r.timed_out
+                code,
+                esc(&out),
+                esc(&err),
+                now_ms().saturating_sub(started)
             );
             respond(&mut stream, 200, &body, "application/json");
         }
@@ -423,16 +946,7 @@ fn handle_conn(mut stream: TcpStream, app: App) {
                 return;
             }
 
-            let exe_lc = exe.to_lowercase();
-            let args: Vec<String> = if exe_lc.contains("dsh") {
-                vec!["--profile".into(), "headless".into(), text.clone()]
-            } else if exe_lc.contains("codex") {
-                vec!["exec".into(), "--skip-git-repo-check".into(), text.clone()]
-            } else if exe_lc.contains("hermes") {
-                vec!["-z".into(), text.clone()]
-            } else {
-                vec![text.clone()]
-            };
+            let args = agent_args(&exe, &text);
 
             klog(&format!("    [本地 agent] {} {:?}", exe, args));
             let started = now_ms();
@@ -608,8 +1122,11 @@ const AGENTS: &[(&str, &[&str])] = &[
     ("Claude Code", &["claude.cmd", "claude.exe", "claude"]),
     ("Codex CLI", &["codex.cmd", "codex.exe", "codex"]),
     ("Hermes", &["hermes.cmd", "hermes.exe", "hermes"]),
-    ("DeepSeek Harness (CLI)", &["dsh.cmd", "dsh.exe", "dsh"]),
-    ("DeepSeek Harness (桌面版)", &["DeepSeek Harness.exe"]),
+    ("DeepSeek Harness", &["dsh.cmd", "dsh.exe", "dsh"]),
+    // 注意：不要在这里加「DeepSeek Harness.exe」等 GUI 程序。
+    // 它们是 Electron 外壳，headless 起不来——会去抢正在运行界面的缓存锁，
+    // 然后吐一句 net\disk_cache 的 ERROR 就退出，用户只会看到报错。
+    // 要驱动 DSH 就用上面的 CLI（dsh --profile headless）。
     ("Gemini CLI", &["gemini.cmd", "gemini.exe", "gemini"]),
     ("Aider", &["aider.cmd", "aider.exe", "aider"]),
     ("Ollama", &["ollama.exe", "ollama"]),
@@ -676,6 +1193,119 @@ fn file_version(p: &Path) -> String {
     }
 }
 
+/// 这些 key 名看起来就带密钥，值要打码
+fn looks_secret_key(k: &str) -> bool {
+    let k = k.to_lowercase();
+    ["token", "key", "secret", "password", "passwd", "auth", "credential", "bearer"]
+        .iter().any(|p| k.contains(p))
+}
+
+const MASK: &str = "__KC_MASKED__";
+
+/// 读出前把敏感值打码，防止 API Key 出现在手机屏幕和聊天记录里
+fn mask_secrets(text: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let pos = line.find(": ").or_else(|| line.find('=')).or_else(|| line.find(':'));
+        let masked = match pos {
+            Some(i) => {
+                let key = &line[..i];
+                if looks_secret_key(key) {
+                    let rest = &line[i..];
+                    let sep_len = if rest.starts_with(": ") || rest.starts_with("= ") { 2 } else { 1 };
+                    let (sep, val) = rest.split_at(sep_len.min(rest.len()));
+                    let trail = if val.trim_end().ends_with(',') { "," } else { "" };
+                    format!("{}{}\"{}\"{}", key, sep, MASK, trail)
+                } else {
+                    line.to_string()
+                }
+            }
+            None => line.to_string(),
+        };
+        out.push(masked);
+    }
+    let mut r = out.join("\n");
+    // 保留原文件末尾的换行，否则每次保存都会吃掉一个换行
+    if text.ends_with('\n') { r.push('\n'); }
+    r
+}
+
+/// 写回时把占位符换回原值，否则会把用户的 Key 覆盖成占位符
+fn restore_masked(new_text: &str, old_text: &str) -> String {
+    if !new_text.contains(MASK) {
+        return new_text.to_string();
+    }
+    // 旧文件的 key → 原值
+    let mut map: Vec<(String, String)> = Vec::new();
+    for line in old_text.lines() {
+        let pos = line.find(": ").or_else(|| line.find('=')).or_else(|| line.find(':'));
+        if let Some(i) = pos {
+            let key = line[..i].trim().trim_matches('"').to_string();
+            let rest = &line[i..];
+            let sep_len = if rest.starts_with(": ") || rest.starts_with("= ") { 2 } else { 1 };
+            let val = rest[sep_len.min(rest.len())..].trim().trim_end_matches(',').trim_matches('"').to_string();
+            if !key.is_empty() {
+                map.push((key, val));
+            }
+        }
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    for line in new_text.lines() {
+        if line.contains(MASK) {
+            let pos = line.find(": ").or_else(|| line.find('=')).or_else(|| line.find(':'));
+            if let Some(i) = pos {
+                let key = line[..i].trim().trim_matches('"').to_string();
+                if let Some((_, orig)) = map.iter().find(|(k, _)| *k == key) {
+                    let rest = &line[i..];
+                    let sep_len = if rest.starts_with(": ") || rest.starts_with("= ") { 2 } else { 1 };
+                    let (sep, val) = rest.split_at(sep_len.min(rest.len()));
+                    let trail = if val.trim_end().ends_with(',') { "," } else { "" };
+                    out.push(format!("{}{}\"{}\"{}", &line[..i], sep, orig, trail));
+                    continue;
+                }
+            }
+        }
+        out.push(line.to_string());
+    }
+    let mut r = out.join("\n");
+    if new_text.ends_with('\n') { r.push('\n'); }
+    r
+}
+/// 读 exe 同目录的 .cloudbase-apikey
+fn read_key() -> Option<String> {
+    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    read_trim(&dir.join(".cloudbase-apikey"))
+}
+
+/// 允许手机读写的配置文件（白名单，写死）
+///
+/// 安全边界：只放非敏感配置。
+/// 明确排除 .env / .credentials* / auth* / *.lock —— 那些含 API Key，
+/// 不该通过手机传，也不该在聊天记录里留痕。
+struct CfgItem {
+    id: &'static str,
+    agent: &'static str,
+    label: &'static str,
+    path: std::path::PathBuf,
+}
+
+fn config_allowlist() -> Vec<CfgItem> {
+    let home = env::var("USERPROFILE")
+        .or_else(|_| env::var("HOME"))
+        .unwrap_or_default();
+    let local = env::var("LOCALAPPDATA").unwrap_or_default();
+    let h = Path::new(&home);
+    let l = Path::new(&local);
+
+    vec![
+        CfgItem { id: "claude-settings", agent: "Claude Code", label: "用户设置", path: h.join(".claude").join("settings.json") },
+        CfgItem { id: "claude-md", agent: "Claude Code", label: "全局指令", path: h.join(".claude").join("CLAUDE.md") },
+        CfgItem { id: "codex-config", agent: "Codex CLI", label: "配置", path: h.join(".codex").join("config.toml") },
+        CfgItem { id: "dsh-patch", agent: "DeepSeek Harness", label: "补丁配置", path: h.join(".dsh").join("cordis.patch.yml") },
+        CfgItem { id: "hermes-config", agent: "Hermes", label: "配置", path: l.join("hermes").join("config.yaml") },
+    ]
+}
 /// 单个智能体版本探测上限
 const PROBE_TIMEOUT_MS: u64 = 6000;
 /// 整轮探测总上限，超过就先返回已拿到的
@@ -1222,8 +1852,17 @@ fn now_ms() -> u128 {
 // ---------------- 网关模式（云函数中继）----------------
 
 fn gw_call(url: &str, key: &str, body: &str) -> Result<String, String> {
-    let tmp = std::env::temp_dir().join(format!("kc-gw-{}.json", std::process::id()));
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
+    // 不碰 %TEMP%、也不靠管道抓 stdout：
+    // 受限环境（沙箱 / 组策略 / 某些 EDR）下创建管道会被拒（os error 5），
+    // %TEMP% 也可能不可写。改成请求体、响应体、stderr 全落 exe 同目录的文件。
+    let dir = exe_dir();
+    let pid = std::process::id();
+    let req = dir.join(format!(".kc-req-{}.json", pid));
+    let rsp = dir.join(format!(".kc-rsp-{}.json", pid));
+    let errf = dir.join(format!(".kc-err-{}.txt", pid));
+    std::fs::write(&req, body).map_err(|e| format!("写请求体失败: {}", e))?;
+    let _ = std::fs::remove_file(&rsp);
+    let ef = std::fs::File::create(&errf).map_err(|e| format!("建 stderr 文件失败: {}", e))?;
     let mut c = Command::new("curl.exe");
     c.args([
         "-s", "--max-time", "25",
@@ -1231,16 +1870,25 @@ fn gw_call(url: &str, key: &str, body: &str) -> Result<String, String> {
         "-H", &format!("Authorization: Bearer {}", key),
         "-H", "X-Tcb-Webfn: true",
         "-H", "Content-Type: application/json",
-        "--data-binary", &format!("@{}", tmp.to_string_lossy()),
+        "--data-binary", &format!("@{}", req.to_string_lossy()),
+        "-o", &rsp.to_string_lossy(),
     ])
-    .stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
+    .stdout(Stdio::null()).stderr(Stdio::from(ef)).stdin(Stdio::null());
     no_window(&mut c);
-    let out = c.output().map_err(|e| format!("curl 失败: {}", e))?;
-    let _ = std::fs::remove_file(&tmp);
-    if !out.status.success() {
-        return Err(format!("curl 退出码 {:?}: {}", out.status.code(), String::from_utf8_lossy(&out.stderr).trim()));
+    let st = c.status().map_err(|e| format!("curl 启动失败: {}", e));
+    let _ = std::fs::remove_file(&req);
+    let st = st?;
+    let out = std::fs::read_to_string(&rsp).unwrap_or_default();
+    let err = std::fs::read_to_string(&errf).unwrap_or_default();
+    let _ = std::fs::remove_file(&rsp);
+    let _ = std::fs::remove_file(&errf);
+    if !st.success() {
+        return Err(format!("curl 退出码 {:?}: {}", st.code(), err.trim()));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    if out.trim().is_empty() {
+        return Err(format!("云端返回空响应{}", if err.trim().is_empty() { String::new() } else { format!("：{}", err.trim()) }));
+    }
+    Ok(out)
 }
 
 fn gw_json_url(s: &str) -> String {
@@ -1303,9 +1951,12 @@ fn run_gateway(cfg: Config) {
                 hb_agents = agents_json(&fresh);
                 println!("  [扫描] 已重新识别 {} 个智能体", fresh.len());
             }
+            // 顺手把局域网地址报上去，小程序据此自动发现同一 WiFi 下的电脑，
+            // 用户就不用再手输 IP 和令牌了
+            let lan = local_ip().unwrap_or_default();
             let body = format!(
-                "{{\"action\":\"heartbeat\",\"deviceCode\":\"{}\",\"name\":\"{}\",\"agents\":{}}}",
-                esc(&code), esc(&hostname()), hb_agents
+                "{{\"action\":\"heartbeat\",\"deviceCode\":\"{}\",\"name\":\"{}\",\"agents\":{},\"lanIp\":\"{}\",\"lanPort\":{}}}",
+                esc(&code), esc(&hostname()), hb_agents, esc(&lan), cfg.port
             );
             if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
                 println!("  ! 心跳失败: {}", e);
@@ -1406,22 +2057,13 @@ fn run_gateway(cfg: Config) {
                 if text.trim().is_empty() { continue; }
 
                 klog(&format!("    [agent] 收到消息 -> {}", agent));
-                // headless 模式：agent 支持「单次提问 → 纯文本输出」，比 PTY 可靠得多
-                let headless = json_str(&d, "headless").unwrap_or_default();
-                if headless == "1" {
-                    let exe_lc = exe.to_lowercase();
-                    let args: Vec<String> = if exe_lc.contains("dsh") {
-                        // headless 是 profile 名，必须写成 --profile headless <任务>
-                        vec!["--profile".into(), "headless".into(), text.clone()]
-                    } else if exe_lc.contains("codex") {
-                        vec!["exec".into(), "--skip-git-repo-check".into(), text.clone()]
-                    } else if exe_lc.contains("hermes") {
-                        vec!["-z".into(), text.clone()]
-                    } else {
-                        vec![text.clone()]
-                    };
+                // 默认走 headless：一次提问拿纯文本，比 PTY 抢屏可靠得多。
+                // 只有显式传 headless=0 才返回下面的常驻会话分支。
+                let headless = json_str(&d, "headless").unwrap_or_else(|| "1".to_string());
+                if headless != "0" {
+                    let args = agent_args(&exe, &text);
                     klog(&format!("    [agent] headless: {} {:?}", exe, args));
-                    let out = run_headless(&exe, &args, 120000);
+                    let out = run_headless(&exe, &args, 150000);
                     let reply = match out {
                         Ok(s) => {
                             let c = strip_ansi(&s);
@@ -1520,50 +2162,63 @@ fn gw_handle(url: &str, key: &str, code: &str, cfg: &Config, doc: &str) {
         }
     }
 
+    // 云端来的 agent 任务：交给智能体跑，不能当 shell 命令执行
+    if kind == "agent" {
+        // 优先用 exe 路径判断该走哪种命令行；agent 只是显示名，作兜底
+        let who = json_str(doc, "exe")
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| json_str(doc, "agent"))
+            .unwrap_or_default();
+        if who.trim().is_empty() {
+            gw_update(url, key, &id, &format!(
+                "{{\"status\":\"error\",\"stderr\":\"任务缺少 agent 字段\",\"finishedAt\":{}}}", now_ms()));
+            println!("  ✗ agent 任务缺 agent 字段");
+            return;
+        }
+        let args = agent_args(&who, &payload);
+        klog(&format!("    [云端 agent] {} {:?}", who, args));
+        println!("  ▷ {} {}", who, payload);
+        gw_update(url, key, &id, &format!(
+            "{{\"status\":\"running\",\"startedAt\":{},\"deviceCode\":\"{}\"}}", now_ms(), esc(code)));
+        match run_headless(&who, &args, 180000) {
+            Ok(raw) => {
+                let reply = strip_ansi(&raw);
+                gw_update(url, key, &id, &format!(
+                    "{{\"status\":\"done\",\"stdout\":\"{}\",\"stderr\":\"\",\"exitCode\":0,\"timedOut\":false,\"finishedAt\":{}}}",
+                    esc(reply.trim()), now_ms()));
+                println!("  ✓ agent 完成");
+            }
+            Err(e) => {
+                gw_update(url, key, &id, &format!(
+                    "{{\"status\":\"error\",\"stderr\":\"{}\",\"finishedAt\":{}}}", esc(&e), now_ms()));
+                println!("  ✗ agent 失败: {}", e);
+            }
+        }
+        return;
+    }
+
     println!("  $ {}", payload);
     gw_update(url, key, &id, &format!(
         "{{\"status\":\"running\",\"startedAt\":{},\"deviceCode\":\"{}\"}}", now_ms(), esc(code)));
 
-    // 处理 cd：切换会话工作目录，不真的执行
-    let trimmed = payload.trim();
-    if let Some(rest) = trimmed.strip_prefix("cd ") {
-        let mut target = rest.trim().trim_matches(char::from(34));
-        // 兼容 cd /d X: 这种写法
-        if target.to_lowercase().starts_with("/d ") {
-            target = target[3..].trim();
+    // 全部交给常驻 Shell 顺序执行：cd / export / 环境状态都能延续，
+    // 也不用再给 cd 写特判，更不会每条命令都新起一个进程。
+    match term_run(&payload, cfg.timeout_ms) {
+        Ok((out, xcode)) => {
+            println!("    → done(exit {}) {}", xcode, out.lines().next().unwrap_or(""));
+            let set = format!(
+                "{{\"status\":\"{}\",\"stdout\":\"{}\",\"stderr\":\"\",\"exitCode\":{},\"ms\":0,\"timedOut\":false,\"finishedAt\":{}}}",
+                if xcode == 0 { "done" } else { "error" }, esc(&out), xcode, now_ms());
+            gw_update(url, key, &id, &set);
         }
-        let base = get_cwd();
-        let candidate = if target.is_empty() {
-            env::var("USERPROFILE").unwrap_or_else(|_| "C:\\\\".to_string())
-        } else if Path::new(target).is_absolute() {
-            target.to_string()
-        } else if base.is_empty() {
-            target.to_string()
-        } else {
-            format!("{}\\{}", base, target)
-        };
-        let out = if Path::new(&candidate).is_dir() {
-            set_cwd(&candidate);
-            format!("切换到 {}", candidate)
-        } else {
-            format!("目录不存在: {}", candidate)
-        };
-        println!("    → cd: {}", out);
-        let set = format!(
-            "{{\"status\":\"done\",\"stdout\":\"{}\",\"stderr\":\"\",\"exitCode\":0,\"ms\":0,\"timedOut\":false,\"finishedAt\":{}}}",
-            esc(&out), now_ms());
-        gw_update(url, key, &id, &set);
-        return;
+        Err(e) => {
+            println!("    → 失败 {}", e);
+            let set = format!(
+                "{{\"status\":\"error\",\"stderr\":\"{}\",\"finishedAt\":{}}}",
+                esc(&e), now_ms());
+            gw_update(url, key, &id, &set);
+        }
     }
-
-    let r = run_cmd(&payload, &get_cwd(), cfg.timeout_ms);
-    let status = if r.timed_out { "timeout" } else if r.exit_code == 0 { "done" } else { "error" };
-    println!("    → {} (exit {} · {}ms) {}", status, r.exit_code, r.ms, r.stdout.lines().next().unwrap_or(""));
-
-    let set = format!(
-        "{{\"status\":\"{}\",\"stdout\":\"{}\",\"stderr\":\"{}\",\"exitCode\":{},\"ms\":{},\"timedOut\":{},\"finishedAt\":{}}}",
-        status, esc(&r.stdout), esc(&r.stderr), r.exit_code, r.ms, r.timed_out, now_ms());
-    gw_update(url, key, &id, &set);
 }
 
 // ---------------- 常驻终端会话（Git Bash）----------------
@@ -1572,9 +2227,73 @@ struct TermSession {
     writer: Box<dyn std::io::Write + Send>,
     buf: std::sync::Arc<Mutex<Vec<(u64, String)>>>,
     seq: std::sync::Arc<Mutex<u64>>,
+    /// 原始输出流（不是 VT 屏幕快照）。
+    /// buf 是给界面看的整屏快照，只在画面变化时更新；
+    /// 想让「执行一条命令再取结果」跑通，必须另有一条不丢字的通道。
+    raw: std::sync::Arc<Mutex<String>>,
 }
 
 static TERM: Mutex<Option<TermSession>> = Mutex::new(None);
+
+// 跑命令用的 Shell，和终端界面那个 ConPTY 会话分开：
+// ConPTY 的输入管道写进去的命令 bash 收不到（实测），
+// 而管道版 bash 能正常读命令、保留 cd/env 状态。
+static TERM_EXEC: Mutex<Option<(Box<dyn std::io::Write + Send>, std::sync::Arc<Mutex<String>>)>> =
+    Mutex::new(None);
+
+/// 拿不到就建一个只有 stdin/stdout 的 bash，专门执行命令
+fn ensure_exec_shell() -> Result<std::sync::Arc<Mutex<String>>, String> {
+    let mut g = TERM_EXEC.lock().map_err(|_| "exec lock".to_string())?;
+    if let Some((_, raw)) = g.as_ref() {
+        return Ok(raw.clone());
+    }
+    let mut c = Command::new(bash_path());
+    c.args(["--norc", "--noprofile"]);
+    c.env("PS1", "");
+    c.env("TERM", "dumb");
+    c.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    c.creation_flags(CREATE_NO_WINDOW);
+    let mut child = c.spawn().map_err(|e| format!("启动命令 Shell 失败: {}", e))?;
+    let stdin = child.stdin.take().ok_or("no stdin")?;
+    let out = child.stdout.take().ok_or("no stdout")?;
+    let err = child.stderr.take();
+
+    let raw: std::sync::Arc<Mutex<String>> = std::sync::Arc::new(Mutex::new(String::new()));
+
+    let r1 = raw.clone();
+    let mut o = out;
+    thread::spawn(move || {
+        let mut tmp = [0u8; 4096];
+        loop {
+            match o.read(&mut tmp) {
+                Ok(0) => break,
+                Ok(k) => push_raw(&r1, &String::from_utf8_lossy(&tmp[..k])),
+                Err(_) => break,
+            }
+        }
+    });
+    if let Some(mut e) = err {
+        let r2 = raw.clone();
+        thread::spawn(move || {
+            let mut tmp = [0u8; 4096];
+            loop {
+                match e.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(k) => push_raw(&r2, &String::from_utf8_lossy(&tmp[..k])),
+                    Err(_) => break,
+                }
+            }
+        });
+    }
+
+    klog("    [term] 命令 Shell 已建立（管道）");
+    let arc = raw.clone();
+    *g = Some((Box::new(stdin), raw));
+    Ok(arc)
+}
 static TERM_PC: Mutex<Option<isize>> = Mutex::new(None);
 
 fn bash_path() -> String {
@@ -1591,6 +2310,18 @@ fn bash_path() -> String {
     String::from("bash.exe")
 }
 
+/// 往原始流里追加，只保留尾部 256KB，避免长会话吃内存
+fn push_raw(raw: &std::sync::Arc<Mutex<String>>, text: &str) {
+    if let Ok(mut r) = raw.lock() {
+        r.push_str(text);
+        if r.len() > 262144 {
+            let cut = r.len() - 262144;
+            let cut = r.as_bytes().iter().skip(cut).position(|b| (*b & 0xC0) != 0x80).map(|i| i + cut).unwrap_or(cut);
+            *r = r[cut..].to_string();
+        }
+    }
+}
+
 fn push_chunk(buf: &std::sync::Arc<Mutex<Vec<(u64, String)>>>, seq: &std::sync::Arc<Mutex<u64>>, text: String) {
     if let (Ok(mut q), Ok(mut bb)) = (seq.lock(), buf.lock()) {
         *q = now_ms() as u64;
@@ -1601,17 +2332,137 @@ fn push_chunk(buf: &std::sync::Arc<Mutex<Vec<(u64, String)>>>, seq: &std::sync::
     }
 }
 
-// 默认：管道版 bash（无 TTY，但普通命令都能跑）
-fn ensure_term() -> Result<(), String> {
-    let mut g = TERM.lock().map_err(|_| "term lock")?;
-    if g.is_some() {
-        return Ok(());
+/// 在常驻 Shell 里顺序执行一条命令，返回它的输出。
+///
+/// 以前每条命令都新起一个进程，导致 cd/env 状态不保留，还要给 cd 写特判。
+/// 现在直接写进那个唯一的 shell，用 echo 哨兵判断哪一行结束了。
+fn term_run(cmd: &str, timeout_ms: u64) -> Result<(String, i32), String> {
+    return term_run_pipe(cmd, timeout_ms);
+}
+
+fn term_run_pipe(cmd: &str, timeout_ms: u64) -> Result<(String, i32), String> {
+    let raw = ensure_exec_shell()?;
+    let token = format!("__KC_END_{}__", now_ms());
+    // 记下基线：raw 是累积的，只看本次新增的部分，否则会命中上一条命令的哨兵
+    let base = raw.lock().map(|r| r.len()).unwrap_or(0);
+    {
+        let mut g = TERM_EXEC.lock().map_err(|_| "exec lock".to_string())?;
+        let (w, _) = g.as_mut().ok_or_else(|| "命令 Shell 未建立".to_string())?;
+        let line = format!("{}\necho {} $?\n", cmd.trim_end_matches(['\r', '\n']), token);
+        w.write_all(line.as_bytes())
+            .map_err(|e| format!("写入失败: {}", e))?;
+        let _ = w.flush();
     }
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > Duration::from_millis(timeout_ms) {
+            return Err(format!("命令超时（{}ms）", timeout_ms));
+        }
+        thread::sleep(Duration::from_millis(50));
+        let all = raw.lock().map(|r| r.clone()).unwrap_or_default();
+        if all.len() <= base {
+            continue;
+        }
+        let seg = &all[base..];
+        if let Some(pos) = seg.rfind(&token) {
+            // 非交互 bash 不回显命令，seg[..pos] 就是纯输出
+            let mut s = strip_ansi(&seg[..pos]);
+            if let Some(q) = s.find("__KC_END_") {
+                s.truncate(q);
+            }
+            let code = seg[pos + token.len()..]
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse::<i32>()
+                .unwrap_or(0);
+            return Ok((s.trim().to_string(), code));
+        }
+    }
+}
+
+fn term_run_legacy(cmd: &str, timeout_ms: u64) -> Result<String, String> {
+    let fresh = ensure_term2()?;
+    if fresh {
+        // 刚拉起来的 bash 还没进入可读状态，立刻写会被吞掉。
+        // 固定 sleep 靠不住（冷启动可能 2 秒），改成等它真的有输出为止。
+        let probe = {
+            let g = TERM.lock().map_err(|_| "term lock".to_string())?;
+            g.as_ref().map(|s| s.raw.clone())
+        };
+        if let Some(raw) = probe {
+            let t0 = Instant::now();
+            loop {
+                let n = raw.lock().map(|r| r.len()).unwrap_or(0);
+                if n > 0 || t0.elapsed() > Duration::from_millis(8000) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(60));
+            }
+            klog(&format!("    [term] shell 就绪，用时 {}ms", t0.elapsed().as_millis()));
+        }
+    }
+    let token = format!("__KC_END_{}__", now_ms());
+    let buf = {
+        let mut g = TERM.lock().map_err(|_| "term lock".to_string())?;
+        let s = g.as_mut().ok_or_else(|| "终端未建立".to_string())?;
+        let line = format!("{}\necho {}\n", cmd.trim_end_matches(['\r', '\n']), token);
+        s.writer
+            .write_all(line.as_bytes())
+            .map_err(|e| format!("写入失败: {}", e))?;
+        let _ = s.writer.flush();
+        s.raw.clone()
+    };
+
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > Duration::from_millis(timeout_ms) {
+            return Err(format!("命令超时（{}ms）", timeout_ms));
+        }
+        thread::sleep(Duration::from_millis(100));
+
+        let all: String = {
+            let r = buf.lock().map_err(|_| "raw lock".to_string())?;
+            r.clone()
+        };
+        if let Some(pos) = all.rfind(&token) {
+            let head = &all[..pos];
+            // 去掉命令本身被回显的那一段
+            let body = match head.rfind(cmd.trim()) {
+                Some(i) => &head[i + cmd.trim().len()..],
+                None => head,
+            };
+            // 原始流里，哨兵那行 echo 的残影落在输出之后，直接在那儿截断
+            let mut s = strip_ansi(body);
+            if let Some(q) = s.find("__KC_END_") {
+                s.truncate(q);
+            }
+            if let Some(q) = s.rfind("$ echo") {
+                s.truncate(q);
+            }
+            return Ok(s.trim().to_string());
+        }
+    }
+}
+
+// 默认：管道版 bash（无 TTY，但普通命令都能跑）
+fn ensure_term() -> Result<(), String> { ensure_term2().map(|_| ()) }
+
+/// 同 ensure_term，但告诉调用方这次是不是刚新建的会话
+fn ensure_term2() -> Result<bool, String> {
+    let mut g = TERM.lock().map_err(|e| format!("term lock 中毒: {}", e))?;
+    if g.is_some() {
+        klog("    [term] ensure_term: 复用已有会话");
+        return Ok(false);
+    }
+    klog("    [term] ensure_term: 当前无会话，准备新建");
 
     let use_pty = env::var("KC_PTY").map(|v| v != "0").unwrap_or(true);
 
     let buf: std::sync::Arc<Mutex<Vec<(u64, String)>>> = std::sync::Arc::new(Mutex::new(Vec::new()));
     let seq: std::sync::Arc<Mutex<u64>> = std::sync::Arc::new(Mutex::new(0));
+    let raw: std::sync::Arc<Mutex<String>> = std::sync::Arc::new(Mutex::new(String::new()));
 
     if use_pty {
         #[cfg(windows)]
@@ -1632,13 +2483,14 @@ fn ensure_term() -> Result<(), String> {
                     klog(&format!("    [pty] 创建失败，回退管道: {}", e));
                     drop(g);
                     std::env::set_var("KC_PTY", "0");
-                    return ensure_term();
+                    return ensure_term2();
                 }
             };
 
             let mut reader = p.reader;
             let b = buf.clone();
             let s = seq.clone();
+            let rawbuf = raw.clone();
             // 本会话的世代号：旧会话的线程即使还活着，也不会再污染屏幕
             let my_gen = {
                 let mut g2 = SCREEN_GEN.lock().unwrap_or_else(|e| e.into_inner());
@@ -1652,9 +2504,10 @@ fn ensure_term() -> Result<(), String> {
                         Ok(0) => { klog("    [pty] 读取结束: EOF"); break; }
                         Ok(n) => {
 
-                            let raw = String::from_utf8_lossy(&tmp[..n]).to_string();
+                            let chunk = String::from_utf8_lossy(&tmp[..n]).to_string();
+                            push_raw(&rawbuf, &chunk); // 原始流：给命令执行用
                             // 先灌进屏幕网格，只有画面变化时推整屏快照
-                            if let Some(snap) = vt_feed(my_gen, &raw) {
+                            if let Some(snap) = vt_feed(my_gen, &chunk) {
                                 push_chunk(&b, &s, snap);
                             }
                         }
@@ -1662,17 +2515,22 @@ fn ensure_term() -> Result<(), String> {
                     }
                 }
             });
-            *g = Some(TermSession { writer: Box::new(p.writer), buf, seq });
+            *g = Some(TermSession { writer: Box::new(p.writer), buf, seq, raw });
             klog(&format!("    [终端] ConPTY 会话已建立 (pid {})", p.pid));
-            return Ok(());
+            return Ok(true);
         }
         #[cfg(not(windows))]
         return Err("ConPTY 仅支持 Windows".into());
     }
 
+    // headless 退路：不要 -i。
+    // 交互模式在拿不到 tty 时会报 "cannot set terminal process group" /
+    // "no job control"，而且读到 EOF 就退出，常驻会话根本立不住。
+    // 非交互 bash 会从 stdin 逐行读命令、执行、把输出写到 stdout，
+    // 只要写端不关就一直活着 —— 正是 term_run 需要的。
     let mut c = Command::new(bash_path());
-    c.args(["--norc", "--noprofile", "-i"]);
-    c.env("PS1", "$ ");
+    c.args(["--norc", "--noprofile"]);
+    c.env("PS1", "");
     c.env("TERM", "dumb");
     c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
@@ -1684,13 +2542,18 @@ fn ensure_term() -> Result<(), String> {
 
     let b1 = buf.clone();
     let s1 = seq.clone();
+    let r1 = raw.clone();
     let mut o = out;
     thread::spawn(move || {
         let mut tmp = [0u8; 4096];
         loop {
             match o.read(&mut tmp) {
                 Ok(0) => break,
-                Ok(n) => push_chunk(&b1, &s1, String::from_utf8_lossy(&tmp[..n]).to_string()),
+                Ok(n) => {
+                    let c = String::from_utf8_lossy(&tmp[..n]).to_string();
+                    push_raw(&r1, &c);
+                    push_chunk(&b1, &s1, c);
+                }
                 Err(_) => break,
             }
         }
@@ -1699,26 +2562,32 @@ fn ensure_term() -> Result<(), String> {
     if let Some(mut e) = err {
         let b2 = buf.clone();
         let s2 = seq.clone();
+        let r2 = raw.clone();
         thread::spawn(move || {
             let mut tmp = [0u8; 4096];
             loop {
                 match e.read(&mut tmp) {
                     Ok(0) => break,
-                    Ok(n) => push_chunk(&b2, &s2, String::from_utf8_lossy(&tmp[..n]).to_string()),
+                    Ok(n) => {
+                        let c = String::from_utf8_lossy(&tmp[..n]).to_string();
+                        push_raw(&r2, &c);
+                        push_chunk(&b2, &s2, c);
+                    }
                     Err(_) => break,
                 }
             }
         });
     }
 
-    *g = Some(TermSession { writer: Box::new(stdin), buf, seq });
+    *g = Some(TermSession { writer: Box::new(stdin), buf, seq, raw });
     println!("    [终端] bash 管道会话已建立（无 TTY）");
-    Ok(())
+    Ok(true)
 }
 
 /// 关闭当前会话，下次 ensure_term 会用 TERM_SHELL 里记着的 shell 重建。
 /// 注意：这里【不能】清 TERM_SHELL，否则轮询会一直判定「云端设置 != 当前」而无限重置。
 fn term_reset() {
+    klog("    [term] term_reset 被调用（会话将被丢弃）");
     if let Ok(mut g) = TERM.lock() {
         *g = None;
     }
@@ -1846,8 +2715,137 @@ fn node_near(cmd_path: &str) -> Option<String> {
     }
     which_exe("node.exe")
 }
+/// 按智能体类型构造「单次提问 → 纯文本」的参数
+///
+/// 各家的非交互入口都不一样，而且都有坑：
+///   DSH    : headless 是 profile 名，要写 --profile headless
+///   Claude : -p/--print + --output-format text，permission-mode 用 dontAsk 免得卡在确认
+///   Codex  : exec 要 --skip-git-repo-check（否则非 git 目录直接报错）
+///   Hermes : -z/--oneshot，只打印最终文本
+fn agent_args(exe: &str, text: &str) -> Vec<String> {
+    let e = exe.to_lowercase();
+    let name = Path::new(exe)
+        .file_name()
+        .map(|s| s.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    if name.contains("dsh") || e.contains("deepseek") {
+        vec!["--profile".into(), "headless".into(), text.to_string()]
+    } else if name.contains("claude") {
+        // 只有模型名显式给出时才传 --model，否则沿用用户自己的配置
+        let mut v = vec![
+            "-p".to_string(),
+            text.to_string(),
+            "--output-format".into(), "text".into(),
+            "--permission-mode".into(), "dontAsk".into(),
+        ];
+        if let Ok(m) = env::var("KC_CLAUDE_MODEL") {
+            if !m.trim().is_empty() {
+                v.push("--model".into());
+                v.push(m);
+            }
+        }
+        v
+    } else if name.contains("codex") {
+        vec!["exec".into(), "--skip-git-repo-check".into(), text.to_string()]
+    } else if name.contains("hermes") {
+        vec!["-z".into(), text.to_string()]
+    } else if name.contains("ollama") {
+        vec!["run".into(), text.to_string()]
+    } else {
+        vec![text.to_string()]
+    }
+}
 /// 直接跑一个进程并拿到它的 stdout（非交互模式，用于 headless agent）
 fn run_headless(exe: &str, args: &[String], timeout_ms: u64) -> Result<String, String> {
+    // 先按老办法：.cmd 直接解析出 bin.js 用 node 跑（快、无中间层）。
+    // 失败就退回 cmd.exe /c 跑原始 shim —— 有些 shim 会设置环境变量，
+    // 绕过去会导致程序行为异常（DSH 就是这样，写 profile 时报 EPERM）。
+    match run_headless_direct(exe, args, timeout_ms) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let lc = exe.to_lowercase();
+            if lc.ends_with(".cmd") || lc.ends_with(".bat") {
+                match run_headless_shim(exe, args, timeout_ms) {
+                    Ok(v) => Ok(v),
+                    Err(_) => Err(e),
+                }
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+fn run_headless_shim(exe: &str, args: &[String], timeout_ms: u64) -> Result<String, String> {
+    // 用 cmd.exe 跑原始 shim，保留它内部设的环境变量
+    let mut c = Command::new("cmd.exe");
+    c.arg("/c").arg(exe);
+    c.args(args);
+    c.stdin(Stdio::null());
+    c.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    c.creation_flags(CREATE_NO_WINDOW);
+    collect_child(c, timeout_ms)
+}
+
+fn collect_child(mut c: Command, timeout_ms: u64) -> Result<String, String> {
+    let mut child = c.spawn().map_err(|e| format!("启动失败: {}", e))?;
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let collected: std::sync::Arc<Mutex<(Vec<u8>, Vec<u8>)>> =
+        std::sync::Arc::new(Mutex::new((Vec::new(), Vec::new())));
+    let c1 = collected.clone();
+    let h1 = out_pipe.take().map(|mut p| {
+        thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            loop {
+                match p.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => { if let Ok(mut g) = c1.lock() { g.0.extend_from_slice(&buf[..n]); } }
+                    Err(_) => break,
+                }
+            }
+        })
+    });
+    let c2 = collected.clone();
+    let h2 = err_pipe.take().map(|mut p| {
+        thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            loop {
+                match p.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => { if let Ok(mut g) = c2.lock() { g.1.extend_from_slice(&buf[..n]); } }
+                    Err(_) => break,
+                }
+            }
+        })
+    });
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > Duration::from_millis(timeout_ms) {
+                    let _ = child.kill();
+                    return Err("超时".into());
+                }
+                thread::sleep(Duration::from_millis(120));
+            }
+            Err(e) => return Err(format!("等待失败: {}", e)),
+        }
+    }
+    if let Some(h) = h1 { let _ = h.join(); }
+    if let Some(h) = h2 { let _ = h.join(); }
+    let g = collected.lock().map_err(|_| "读取失败")?;
+    let mut s = String::from_utf8_lossy(&g.0).to_string();
+    if s.trim().is_empty() {
+        s = String::from_utf8_lossy(&g.1).to_string();
+    }
+    Ok(s)
+}
+
+fn run_headless_direct(exe: &str, args: &[String], timeout_ms: u64) -> Result<String, String> {
     // .cmd 批处理经 cmd.exe 启动时会踩引号与权限的坑。
     // npm 生成的 xxx.cmd 本质是 `node "…\lib\bin.js" %*`，
     // 这里解析出 bin.js 直接用 node 调用，绕开中间层。
@@ -2189,9 +3187,13 @@ mod pty {
         pub tid: u32,
     }
 
+
     #[link(name = "kernel32")]
     extern "system" {
         pub fn FreeConsole() -> i32;
+        pub fn AttachConsole(pid: u32) -> i32;
+        pub fn CreateFileA(n: *const u8, acc: u32, share: u32, sec: *mut core::ffi::c_void, disp: u32, fl: u32, tmpl: Handle) -> Handle;
+        pub fn SetStdHandle(kind: u32, h: Handle) -> i32;
         fn CreatePipe(r: *mut Handle, w: *mut Handle, sa: *mut core::ffi::c_void, n: u32) -> i32;
         fn CloseHandle(h: Handle) -> i32;
         fn CreatePseudoConsole(size: u32, input: Handle, output: Handle, flags: u32, out: *mut Handle) -> i32;
@@ -2614,3 +3616,45 @@ fn vt_feed(gen: u64, text: &str) -> Option<String> {
     None
 }
 
+
+#[cfg(test)]
+mod cfg_tests {
+    use super::*;
+
+    #[test]
+    fn mask_hides_secret_values() {
+        let orig = "{\n  \"env\": {\n    \"ANTHROPIC_AUTH_TOKEN\": \"sk-abc123\",\n    \"MODEL\": \"foo\"\n  }\n}";
+        let masked = mask_secrets(orig);
+        assert!(masked.contains(MASK), "应该出现占位符");
+        assert!(!masked.contains("sk-abc123"), "真实密钥不能出现在输出里");
+        assert!(masked.contains("foo"), "非敏感值要原样保留");
+    }
+
+    #[test]
+    fn restore_puts_secret_back() {
+        let orig = "{\n  \"env\": {\n    \"ANTHROPIC_AUTH_TOKEN\": \"sk-abc123\",\n    \"MODEL\": \"foo\"\n  }\n}";
+        let masked = mask_secrets(orig);
+        let restored = restore_masked(&masked, orig);
+        assert!(restored.contains("sk-abc123"), "写回时密钥必须还原");
+        assert!(!restored.contains(MASK), "不能把占位符写进文件");
+        assert!(restored.contains("foo"));
+    }
+
+    #[test]
+    fn restore_keeps_user_edit() {
+        // 用户把 model 改了，密钥仍要被还原
+        let orig = "{\n  \"ANTHROPIC_AUTH_TOKEN\": \"sk-abc123\",\n  \"MODEL\": \"old\"\n}";
+        let masked = mask_secrets(orig);
+        let edited = masked.replace("\"old\"", "\"new\"");
+        let restored = restore_masked(&edited, orig);
+        assert!(restored.contains("sk-abc123"), "密钥要还原");
+        assert!(restored.contains("\"new\""), "用户的修改要保留");
+        assert!(!restored.contains("\"old\""));
+    }
+
+    #[test]
+    fn plain_text_untouched() {
+        let s = "# 只是注释\n没有等号也没有冒号的一行\n";
+        assert_eq!(mask_secrets(s), s);
+    }
+}

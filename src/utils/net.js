@@ -112,6 +112,68 @@ function lanRequest(path, method, data) {
   });
 }
 
+
+// ---- 自动发现 ----
+// 电脑在心跳里上报了局域网 IP，手机逐个试连，
+// 通了就自动配上，用户不用手输地址和令牌。
+var PROBE_TIMEOUT = 900;
+
+function probeOne(ip, port, token) {
+  return new Promise(function (resolve) {
+    var settled = false;
+    var done = function (ok) { if (!settled) { settled = true; resolve(ok); } };
+    var timer = setTimeout(function () { done(false); }, PROBE_TIMEOUT);
+    try {
+      wx.request({
+        url: 'http://' + ip + ':' + port + '/ping',
+        method: 'GET',
+        timeout: PROBE_TIMEOUT,
+        success: function (res) {
+          clearTimeout(timer);
+          done(!!(res && res.statusCode === 200 && res.data && res.data.ok));
+        },
+        fail: function () { clearTimeout(timer); done(false); }
+      });
+    } catch (e) { clearTimeout(timer); done(false); }
+  });
+}
+
+// devices: 云端返回的设备列表（含 lanIp / lanPort / deviceCode）
+// 返回 Promise<string>：配上的地址，没配上返回 ''
+function autoDiscover(devices) {
+  var cands = [];
+  for (var i = 0; i < (devices || []).length; i++) {
+    var d = devices[i];
+    if (!d.lanIp || !d.lanPort) continue;
+    // 已经配过同一个地址就跳过重复探测
+    cands.push({ ip: d.lanIp, port: d.lanPort, token: d.deviceCode });
+  }
+  if (!cands.length) return Promise.resolve('');
+
+  // 已经配好的地址直接复用，不用再试
+  var cur = lanBase();
+  for (var j = 0; j < cands.length; j++) {
+    if (cur && cur.indexOf(cands[j].ip + ':' + cands[j].port) >= 0 && lanCache.ok) {
+      return Promise.resolve(cur);
+    }
+  }
+
+  // 串行试，第一个通的就用它
+  var k = 0;
+  function next() {
+    if (k >= cands.length) return Promise.resolve('');
+    var c = cands[k++];
+    return probeOne(c.ip, c.port, c.token).then(function (ok) {
+      if (!ok) return next();
+      setLanHost(c.ip + ':' + c.port);
+      setLanToken(c.token);
+      lanCache = { at: Date.now(), ok: true };
+      emit();
+      return 'http://' + c.ip + ':' + c.port;
+    });
+  }
+  return next();
+}
 module.exports = {
   getLanHost: getLanHost,
   setLanHost: setLanHost,
@@ -123,5 +185,6 @@ module.exports = {
   currentMode: currentMode,
   modeLabel: modeLabel,
   onChange: onChange,
-  lanRequest: lanRequest
+  lanRequest: lanRequest,
+  autoDiscover: autoDiscover
 };

@@ -1,9 +1,12 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/login/login",
     "pages/shell/shell",
     "pages/terminal/terminal",
-    "pages/agent/agent"
+    "pages/agent/agent",
+    "pages/account/account",
+    "pages/agentcfg/agentcfg"
   ],
   "window": {
     "backgroundTextStyle": "dark",

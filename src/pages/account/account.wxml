@@ -1,0 +1,147 @@
+<view class="screen" style="justify-content:flex-start;padding-top:40rpx">
+  <view class="stack" style="max-width:640rpx">
+
+    <view class="row" style="align-items:center">
+      <view class="avatar">{{initials}}</view>
+      <view style="flex:1;margin-left:24rpx">
+        <text class="title-lg" style="font-size:38rpx">{{displayName}}</text>
+        <view class="sub mono" style="font-size:20rpx;margin-top:6rpx">{{uidShort}}</view>
+      </view>
+    </view>
+
+    <view class="box" style="margin-top:32rpx" wx:if="{{signedOut}}">
+      <view class="row">
+        <text style="font-size:26rpx">已退出登录</text>
+        <text class="sub" style="font-size:20rpx">本机</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:8rpx">
+        缓存已清空。微信身份还在，点下面就能登回来，账号数据都还在。
+      </view>
+      <view class="btn-primary" style="margin-top:18rpx" bindtap="doSignIn">
+        {{signingIn ? '登录中…' : '重新登录'}}
+      </view>
+    </view>
+
+    <view class="box" style="margin-top:32rpx" wx:else>
+      <view class="row">
+        <text style="font-size:26rpx">邮箱</text>
+        <text class="sub" style="font-size:20rpx">{{email ? '已绑定' : '未绑定'}}</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:6rpx">
+        只作为登录账号名，不做邮箱验证（这个环境发不了邮件）。填什么都行，记住它就能登录
+      </view>
+      <input class="input" style="margin-top:16rpx" placeholder="you@example.com"
+             placeholder-class="input-ph" value="{{email}}" bindinput="onEmail"
+             type="text" confirm-type="done"/>
+      <view class="btn-primary" style="margin-top:16rpx" bindtap="saveEmail">
+        {{savingEmail ? '保存中…' : '保存邮箱'}}
+      </view>
+    </view>
+
+    <view class="box" style="margin-top:20rpx">
+      <text style="font-size:26rpx">昵称</text>
+      <view class="sub" style="font-size:20rpx;margin-top:6rpx">不填的话就用邮箱显示</view>
+      <input class="input" style="margin-top:16rpx" placeholder="怎么称呼你"
+             placeholder-class="input-ph" value="{{nickname}}" bindinput="onNick"
+             confirm-type="done"/>
+      <view class="btn-ghost" style="margin-top:16rpx" bindtap="saveNick">
+        {{savingNick ? '保存中…' : '保存昵称'}}
+      </view>
+    </view>
+
+    <!-- 我的设备 -->
+    <view class="box" style="margin-top:20rpx">
+      <view class="row">
+        <text style="font-size:26rpx">我的设备</text>
+        <text class="sub" style="font-size:20rpx">{{devices.length}} 台</text>
+      </view>
+
+      <view wx:for="{{devices}}" wx:key="deviceCode" class="dev" style="margin-top:16rpx"
+            data-code="{{item.deviceCode}}" data-name="{{item.name}}">
+        <view class="row">
+          <text style="font-size:25rpx">{{item.name || item.deviceCode}}</text>
+          <text class="dev-dot {{item.online ? 'on' : 'off'}}">{{item.online ? '在线' : '离线'}}</text>
+        </view>
+        <view class="sub mono" style="font-size:19rpx;margin-top:4rpx;color:#4d535a">
+          {{item.deviceCode}}{{item.machineName && item.machineName !== item.name ? ' · ' + item.machineName : ''}}
+        </view>
+        <view class="row" style="margin-top:10rpx" wx:if="{{item.mine}}">
+          <text class="dev-act" bindtap="renameDevice">重命名</text>
+          <text class="dev-act danger" bindtap="removeDevice">解绑</text>
+          <text class="dev-act danger" bindtap="deleteDevice">删除</text>
+          <text class="sub" style="font-size:19rpx;margin-left:auto">{{item.agents.length}} 个智能体</text>
+        </view>
+        <view class="row" style="margin-top:10rpx" wx:else>
+          <text class="dev-act" bindtap="claimDevice">绑定到我的账号</text>
+        </view>
+      </view>
+
+      <view class="sub" style="font-size:20rpx;margin-top:12rpx" wx:if="{{devices.length === 0}}">
+        还没有电脑上线。在电脑上跑 kuaichuan.exe 就会出现在这里。
+      </view>
+    </view>
+
+    <!-- 跨端登录密码 -->
+    <view class="box" style="margin-top:20rpx">
+      <view class="row">
+        <text style="font-size:26rpx">登录密码</text>
+        <text class="sub" style="font-size:20rpx">{{hasPassword ? '已设置' : '未设置'}}</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:6rpx">
+        设了之后，以后出 App 或网页端能用「邮箱 + 密码」登录同一个账号，设备都在。
+        注意：邮箱没有验证过，它只是个账号名 + 密码，不是「证明这个邮箱是你的」。
+      </view>
+      <input class="input" style="margin-top:16rpx" placeholder="至少 6 位"
+             placeholder-class="input-ph" value="{{pwd}}" bindinput="onPwd" password/>
+      <view class="btn-ghost" style="margin-top:16rpx" bindtap="savePassword">
+        {{savingPwd ? '保存中…' : (hasPassword ? '修改密码' : '设置密码')}}
+      </view>
+    </view>
+
+    <view class="sub" style="text-align:center;margin-top:28rpx;font-size:20rpx">{{hint}}</view>
+
+    <!-- 开发者工具：默认收起，连点标题 5 次才展开 -->
+    <view class="box" style="margin-top:36rpx" wx:if="{{devOpen}}">
+      <view class="row">
+        <text style="font-size:26rpx;color:#8b9199">开发者</text>
+        <text class="sub" style="font-size:20rpx">调试用</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:8rpx">
+        清除本机保存的账号、配对、历史与会话，回到首次打开时的未登录状态。
+        云端账号记录不会删除，重新登录还是同一个人。
+      </view>
+
+      <view class="box-press" style="margin-top:16rpx;border:1rpx solid #3a2226;border-radius:12rpx;padding:18rpx 20rpx"
+            bindtap="resetLoggedOut">
+        <view class="row">
+          <text style="font-size:24rpx;color:#e0846f">恢复默认（未登录）</text>
+          <text class="sub" style="font-size:20rpx">清本地</text>
+        </view>
+        <view class="sub" style="font-size:19rpx;margin-top:6rpx">
+          清掉账号缓存，重开后重新走登录
+        </view>
+      </view>
+
+      <view class="box-press" style="margin-top:12rpx;border:1rpx solid #3a2226;border-radius:12rpx;padding:18rpx 20rpx"
+            bindtap="resetWipeAll">
+        <view class="row">
+          <text style="font-size:24rpx;color:#e0846f">全部清空（含新加的缓存）</text>
+          <text class="sub" style="font-size:20rpx">彻底</text>
+        </view>
+        <view class="sub" style="font-size:19rpx;margin-top:6rpx">
+          连以后新增的缓存 key 一起清掉
+        </view>
+      </view>
+
+      <view class="sub mono" style="font-size:19rpx;margin-top:14rpx;color:#6b7178">{{resetInfo}}</view>
+    </view>
+
+    <view style="text-align:center;margin-top:40rpx;padding:20rpx 0" bindtap="tapTitle">
+      <text style="font-size:20rpx;color:#5a6068">快传 v{{version}}</text>
+      <view wx:if="{{tapHint}}" style="margin-top:10rpx">
+        <text style="font-size:19rpx;color:#8b9199">再点 {{5 - tapsLeft}} 次进入开发者</text>
+      </view>
+    </view>
+
+  </view>
+</view>

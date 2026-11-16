@@ -1,6 +1,8 @@
 const http = require('http');
 const ENV = 'eval-lifecycle-d7gf433u22f6c2405';
-const KEY = 'REMOVED-ROTATED-20261116';
+// 服务密钥由云函数环境变量 KC_API_KEY 注入；切勿写回源码或提交到版本库
+const KEY = process.env.KC_API_KEY || "";
+if (!KEY) console.error("[kuaichuan-relay] 未配置 KC_API_KEY");
 const BASE = 'https://' + ENV + '.api.tcloudbasegateway.com/v1/database/instances/(default)/databases/(default)';
 const PORT = process.env.PORT || 9000;
 const CMD = 'commands';
@@ -132,12 +134,64 @@ async function handle(req) {
   if (a === 'agent_result') {
     const r = await db('GET', '/collections/agent_in_4759588622381809665/documents/' + encodeURIComponent(req.id));
     return { ok: true, doc: r || {} };
-  }  return { ok: false, error: 'unknown action: ' + a };
+  }
+  // ---- 电脑端自管（exe 用配对码证明「我就是这台电脑」）----
+  if (a === 'device_self_status') {
+    const code = req.deviceCode || '';
+    if (!code) return { ok: false, error: '缺 deviceCode' };
+    const q = encodeURIComponent(JSON.stringify({ deviceCode: code }));
+    const fr = await db('GET', '/collections/' + DEV + '/documents?query=' + q + '&limit=1');
+    const hit = (fr.list || [])[0];
+    if (!hit) return { ok: true, bound: false, owner: '', alias: '' };
+    let owner = '';
+    if (hit.owner) {
+      const uq = encodeURIComponent(JSON.stringify({ uid: hit.owner }));
+      const uf = await db('GET', '/collections/users/documents?query=' + uq + '&limit=1');
+      const u = (uf.list || [])[0];
+      if (u) owner = u.nickname || u.email || '某个账号';
+      else owner = '某个账号';
+    }
+    return { ok: true, bound: !!hit.owner, owner: owner, alias: hit.alias || '' };
+  }
+  if (a === 'device_self_release') {
+    const code = req.deviceCode || '';
+    if (!code) return { ok: false, error: '缺 deviceCode' };
+    const q = encodeURIComponent(JSON.stringify({ deviceCode: code }));
+    const fr = await db('GET', '/collections/' + DEV + '/documents?query=' + q + '&limit=1');
+    const hit = (fr.list || [])[0];
+    if (!hit) return { ok: false, error: '这台电脑还没注册到云端' };
+    await db('PATCH', '/collections/' + DEV + '/documents', {
+      query: { _id: hit._id },
+      data: { $set: { owner: '', alias: '', releasedAt: Date.now() } },
+    });
+    return { ok: true };
+  }
+  return { ok: false, error: 'unknown action: ' + a };
+}
+
+// 网关鉴权：电脑端 gw_call() 每个请求都带 Authorization: Bearer <API Key>。
+// 校验它与服务端 KC_API_KEY 一致，挡住匿名调用；服务端没配密钥时一律拒绝。
+const crypto = require('crypto');
+function tokenOk(given) {
+  if (!KEY) return false;
+  const a = Buffer.from(String(given || ''));
+  const b = Buffer.from(KEY);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 http.createServer((req, res) => {
   const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type, Authorization', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS' };
   if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+  // 平台健康检查用：不碰数据库、不暴露环境信息
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, cors));
+    return res.end(JSON.stringify({ ok: true, svc: 'kuaichuan-relay' }));
+  }
+  const auth = String(req.headers.authorization || '');
+  if (!tokenOk(auth.replace(/^Bearer\s+/i, ''))) {
+    res.writeHead(KEY ? 401 : 503, Object.assign({ 'Content-Type': 'application/json; charset=utf-8' }, cors));
+    return res.end(JSON.stringify({ ok: false, error: KEY ? 'unauthorized' : 'KC_API_KEY 未配置' }));
+  }
   let raw = '';
   req.on('data', c => raw += c);
   req.on('end', async () => {

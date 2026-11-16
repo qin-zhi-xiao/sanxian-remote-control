@@ -1,6 +1,28 @@
 var relay = require('../../utils/relay.js');
 
 var STORE = 'kc_chats';
+
+// 从回复里抽文件路径，做成小标签
+// 只认常见的代码/文本扩展名，避免把普通英文单词当文件名
+var FILE_RE = /(?:^|[\s`"'(\[])((?:[\w.@-]+[\/\\])*[\w.@-]+\.(?:js|ts|jsx|tsx|json|md|py|rs|go|java|kt|c|cpp|h|hpp|cs|rb|php|sh|ps1|bat|yml|yaml|toml|ini|cfg|conf|txt|html|css|scss|vue|sql|xml))(?=[\s`"'),;:\]\}]|$)/g;
+
+function extractFiles(text) {
+  if (!text) return [];
+  var seen = {};
+  var out = [];
+  var m;
+  FILE_RE.lastIndex = 0;
+  while ((m = FILE_RE.exec(text)) !== null) {
+    var f = m[1];
+    // 太长的多半是误匹配
+    if (f.length > 80) continue;
+    if (seen[f]) continue;
+    seen[f] = 1;
+    out.push(f);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
 var SID_SEQ = 1;
 
 function nowTime() {
@@ -28,6 +50,9 @@ Page({
     drawerOpen: false,
     pickerOpen: false,
     modeLabel: '',
+    pushQuota: 0,
+    busySec: 0,
+    busyText: '对方正在输入…',
     anchor: 'end'
   },
 
@@ -44,11 +69,56 @@ Page({
     this.loadAgents();
   },
 
+  onHide: function () { this.stopBusyTimer(); },
+  onUnload: function () { this.stopBusyTimer(); },
+
   onShow: function () {
     this.loadAgents();
     this.refreshMode();
+    this.refreshPush();
   },
 
+  goConfig: function () {
+    this.setData({ drawerOpen: false });
+    wx.navigateTo({ url: '/pages/agentcfg/agentcfg' });
+  },
+
+  // ---- 跑完叫我 ----
+  // 小程序订阅消息在教育体验版不可用（云端实测 -501001），
+  // 所以这里是「预约一次提醒」，由云函数通过 webhook 推出来。
+  tapBell: function () {
+    var self = this;
+    wx.showModal({
+      title: '跑完叫我',
+      content: '预约一次提醒：agent 回话时通过推送通道通知你，微信里能收到。每次预约提醒一次。',
+      confirmText: '预约',
+      success: function (res) {
+        if (!res.confirm) return;
+        relay.pushGrant().then(function (r) {
+          var q = (r && r.quota) || 0;
+          self.setData({ pushQuota: q });
+          if (r && r.templateReady === false) {
+            wx.showModal({
+              title: '通知通道没配',
+              content: '云端还没填 PUSH_CHANNEL / PUSH_KEY（Server酱或 PushPlus 的 key），所以现在发不出来。额度已经记下了，配好就能用。',
+              showCancel: false
+            });
+            return;
+          }
+          wx.showToast({ title: '已预约，剩 ' + q + ' 次', icon: 'success' });
+        }).catch(function (e) {
+          wx.showToast({ title: '预约失败', icon: 'none' });
+        });
+      }
+    });
+  },
+
+  refreshPush: function () {
+    var self = this;
+    relay.pushStatus().then(function (r) {
+      self.setData({ pushQuota: (r && r.quota) || 0 });
+    }).catch(function () {});
+  },
   refreshMode: function () {
     var self = this;
     var net = require('../../utils/net.js');
@@ -76,6 +146,9 @@ Page({
         online: !!hit,
         deviceName: hit ? (hit.name || hit.deviceCode) : ''
       });
+      // 顺手自动发现局域网，通了就切直连，不用用户配
+      var net = require('../../utils/net.js');
+      net.autoDiscover(list).then(function () { self.refreshMode(); }).catch(function () {});
     }).catch(function () {});
   },
 
@@ -191,7 +264,8 @@ Page({
     var list = this.data.messages.concat([msg]).concat([
       { id: 'r' + Date.now(), role: 'ai', text: '', time: '' }
     ]);
-    this.setData({ messages: list, draft: '', busy: true, anchor: 'end' });
+    this.setData({ messages: list, draft: '', busy: true, anchor: 'end', busySec: 0, busyText: '对方正在输入…' });
+    this.startBusyTimer();
     this.persist();
 
     // 自动分流：同一局域网走本地直连，否则走云端中转
@@ -248,15 +322,39 @@ Page({
     }, 1000);
   },
 
+  // 跑起来的时候显示已耗时，让人知道它没死
+  startBusyTimer: function () {
+    var self = this;
+    this.stopBusyTimer();
+    var t0 = Date.now();
+    this._busyTimer = setInterval(function () {
+      var sec = Math.floor((Date.now() - t0) / 1000);
+      self.setData({
+        busySec: sec,
+        busyText: sec < 3 ? '对方正在输入…' : (sec < 20 ? '正在干活…' : '还在跑，别急…')
+      });
+    }, 1000);
+  },
+
+  stopBusyTimer: function () {
+    if (this._busyTimer) {
+      clearInterval(this._busyTimer);
+      this._busyTimer = null;
+    }
+  },
+
   fillReply: function (text) {
+    this.stopBusyTimer();
+    var files = extractFiles(text);
     var msgs = this.data.messages.slice();
     if (msgs.length && msgs[msgs.length - 1].role === 'ai') {
       msgs[msgs.length - 1].text = text;
       msgs[msgs.length - 1].time = nowTime();
+      msgs[msgs.length - 1].files = files;
     } else {
-      msgs.push({ id: 'a' + Date.now(), role: 'ai', text: text, time: nowTime() });
+      msgs.push({ id: 'a' + Date.now(), role: 'ai', text: text, time: nowTime(), files: files });
     }
-    this.setData({ messages: msgs, busy: false });
+    this.setData({ messages: msgs, busy: false, busySec: 0 });
     this.persist();
     this.scrollEnd();
   },

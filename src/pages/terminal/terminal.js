@@ -1,145 +1,71 @@
 var relay = require('../../utils/relay.js');
 
-var ANSI = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\u0007]*\u0007|\x1b[()][A-Za-z0-9]/g;
-var DEFAULT_COLOR = '#c6cad0';
-
-function clean(s) {
-  return String(s || '').replace(ANSI, '').replace(/\r/g, '');
-}
-
-/** "#K0:0-4:2472c8;0:8-9:e5e510" → { 0: [[0,4,'#2472c8'], [8,9,'#e5e510']] } */
-function parseColors(spec) {
-  var map = {};
-  if (!spec) return map;
-  var parts = spec.split(';');
-  for (var i = 0; i < parts.length; i++) {
-    var m = /^(\d+):(\d+)-(\d+):([0-9a-fA-F]{6})$/.exec(parts[i]);
-    if (!m) continue;
-    var row = parseInt(m[1], 10);
-    if (!map[row]) map[row] = [];
-    map[row].push([parseInt(m[2], 10), parseInt(m[3], 10), '#' + m[4]]);
-  }
-  return map;
-}
-
-/** 一行文字按颜色段切成 [{t, c}] */
-function segment(line, runs) {
-  if (!runs || !runs.length) return [{ t: line, c: DEFAULT_COLOR }];
-  var sorted = runs.slice().sort(function (a, b) { return a[0] - b[0]; });
-  var out = [];
-  var pos = 0;
-  for (var i = 0; i < sorted.length; i++) {
-    var start = sorted[i][0], end = sorted[i][1], color = sorted[i][2];
-    if (start > pos) out.push({ t: line.substring(pos, start), c: DEFAULT_COLOR });
-    var s = Math.max(start, pos);
-    if (end >= s) {
-      out.push({ t: line.substring(s, end + 1), c: color });
-      pos = end + 1;
-    }
-  }
-  if (pos < line.length) out.push({ t: line.substring(pos), c: DEFAULT_COLOR });
-  var merged = [];
-  for (var j = 0; j < out.length; j++) {
-    if (!out[j].t) continue;
-    if (merged.length && merged[merged.length - 1].c === out[j].c) {
-      merged[merged.length - 1].t += out[j].t;
-    } else {
-      merged.push({ t: out[j].t, c: out[j].c });
-    }
-  }
-  return merged;
-}
-
+// 命令台：一条命令 -> 一次执行 -> 输出追加。
+// 走 relay.run（commands 集合），不再依赖 ConPTY 的整屏快照。
 Page({
   data: {
-    lines: [],
-    screen: [],
-    colors: {},
-    seq: 0,
-    anchor: 'end',
-    focused: true,
-    pending: ''
+    log: [],
+    input: '',
+    busy: false,
+    anchor: '',
+    shell: ''
   },
 
   onLoad: function () {
     var self = this;
-    relay.termRestart().then(function () {
-      setTimeout(function () { self.startPoll(); }, 1500);
-    }).catch(function () { self.startPoll(); });
-  },
-  onUnload: function () { if (this.timer) clearInterval(this.timer); },
-  onHide: function () { if (this.timer) clearInterval(this.timer); },
-  onShow: function () { if (!this.timer) this.startPoll(); },
-
-  applyFrame: function (text, seq) {
-    var txt = clean(text || '');
-    var parts = txt.split('\n');
-
-    if (parts.length && parts[0].indexOf('#C') === 0) parts = parts.slice(1);
-
-    // 先去掉末尾空行，颜色块才露到最后一个位置
-    while (parts.length && parts[parts.length - 1] === '') parts.pop();
-
-    var colorMap = {};
-    for (var i = parts.length - 1; i >= 0; i--) {
-      if (parts[i].indexOf('#K') === 0) {
-        colorMap = parseColors(parts[i].substring(2));
-        parts.splice(i, 1);
-        break;
-      }
-    }
-
-    this.setData({ screen: parts, colors: colorMap, seq: seq || this.data.seq });
-    this.rebuild();
+    relay.termGetShell().then(function (r) {
+      self.setData({ shell: (r && r.shell) || '' });
+    }).catch(function () {});
+    this.append({ kind: 'sys', text: '命令台已就绪，输入命令后按发送。' });
   },
 
-  rebuild: function () {
-    var sc = this.data.screen || [];
-    var cm = this.data.colors || {};
-    var out = [];
-    for (var i = 0; i < sc.length; i++) {
-      out.push({ k: i + 1, segs: segment(sc[i], cm[i]) });
-    }
-    this.setData({ lines: out });
+  append: function (e) {
+    e.k = e.k || ('k' + Date.now() + Math.floor(Math.random() * 10000));
+    var log = this.data.log.concat([e]);
+    if (log.length > 400) log = log.slice(log.length - 400);
+    this.setData({ log: log, anchor: 'end' });
   },
 
-  startPoll: function () {
+  onInput: function (e) { this.setData({ input: e.detail.value }); },
+  onEnter: function () { this.send(); },
+
+  send: function () {
     var self = this;
-    if (this.timer) clearInterval(this.timer);
-    this.timer = setInterval(function () {
-      // 正在上一次请求里就跳过，避免请求堆积导致画面跳帧
-      if (self.busy) return;
-      self.busy = true;
-      relay.termRead(self.data.seq).then(function (r) {
-        self.busy = false;
-        if (!r) return;
-        // 有内容就渲染；即使 seq 相同也应用（逐帧消费时 seq 会正常推进）
-        if (r.text && r.text.length) {
-          self.applyFrame(r.text, r.seq);
-        } else if (r.seq && r.seq !== self.data.seq) {
-          self.setData({ seq: r.seq });
-        }
-      }).catch(function () {
-        self.busy = false;
-      });
-    }, 250);
+    if (this.data.busy) return;
+    var cmd = String(this.data.input || '').trim();
+    if (!cmd) return;
+
+    this.setData({ input: '', busy: true });
+    this.append({ kind: 'cmd', text: cmd });
+
+    relay.run(cmd).then(function (rec) {
+      self.setData({ busy: false });
+      var out = (rec && rec.stdout) || '';
+      var err = (rec && rec.stderr) || '';
+      var st = (rec && rec.status) || 'done';
+
+      if (out) self.append({ kind: 'out', text: out.replace(/\s+$/, '') });
+      if (err) self.append({ kind: 'err', text: err.replace(/\s+$/, '') });
+      if (!out && !err) self.append({ kind: 'sys', text: '（无输出）' });
+
+      if (st !== 'done') {
+        self.append({ kind: 'err', text: '[' + (relay.STATUS_TEXT[st] || st) + ']' });
+      } else if (typeof rec.exitCode === 'number' && rec.exitCode !== 0) {
+        self.append({ kind: 'err', text: 'exit ' + rec.exitCode });
+      }
+    }).catch(function (e) {
+      self.setData({ busy: false });
+      self.append({ kind: 'err', text: '失败：' + ((e && e.message) || e) });
+    });
   },
 
-  onInput: function (e) {
-    var next = e.detail.value || '';
-    var prev = this.data.pending || '';
-    this.setData({ pending: next });
-    if (next.length > prev.length) {
-      relay.termSend(next.substring(prev.length)).catch(function () {});
-    } else if (next.length < prev.length) {
-      var n = prev.length - next.length, bs = '';
-      for (var i = 0; i < n; i++) bs += '\u007f';
-      relay.termSend(bs).catch(function () {});
+  onRetry: function () {
+    var self = this;
+    var last = '';
+    for (var i = this.data.log.length - 1; i >= 0; i--) {
+      if (this.data.log[i].kind === 'cmd') { last = this.data.log[i].text; break; }
     }
-  },
-
-  onEnter: function (e) {
-    this.setData({ pending: '' });
-    relay.termSend('\n').catch(function () {});
+    if (!last) return;
+    this.setData({ input: last }, function () { self.send(); });
   }
 });

@@ -60,8 +60,16 @@ pc/t3e.txt
 CDP-*.png
 dist/.device-code
 cloud/*.zip
-# releases 目录要提交（用于分发）
-!releases/
-!releases/*
+# releases 只放行正式分发文件；密钥、日志、调试产物一律不进版本库
+# 注意：不要用 !releases/*，它会连带放行 .cloudbase-apikey / gw.log / .kc-* 临时文件
+releases/*
+!releases/*.zip
+!releases/*.cmd
+!releases/kuaichuan.exe
+!releases/kuaichuan-v*.exe
 # 构建产物由 releases/ 提供，dist 里的不进版本库
 dist/kuaichuan.exe
+
+# 本地备份与 AI 工作区数据（保留在本机，不进公开仓库）
+*.bak
+.workbuddy/

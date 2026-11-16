@@ -1,6 +1,12 @@
 <!-- 第一阶段：配置（首次打开占满全屏） -->
 <view class="screen" wx:if="{{stage === 'setup'}}">
   <view class="stack">
+    <view class="row" style="justify-content:flex-end;align-items:center;margin-bottom:8rpx">
+      <text wx:if="{{signedOut}}" style="font-size:20rpx;color:#e0846f;margin-right:12rpx">未登录</text>
+      <text wx:elif="{{userLabel}}" style="font-size:20rpx;color:#6b7178;margin-right:12rpx">{{userLabel}}</text>
+      <text wx:else style="font-size:20rpx;color:#6b7178;margin-right:12rpx">{{userName}}</text>
+      <view class="avatar-sm" bindtap="goAccount" bindlongpress="devReset">{{userInitials}}</view>
+    </view>
     <view class="title-lg">连接你的电脑</view>
     <view class="sub" style="text-align:center;margin-top:14rpx">
       在电脑上运行 kuaichuan.exe，它会把配对码写进云端
@@ -16,31 +22,50 @@
       <view class="row" style="margin-top:10rpx">
         <text class="sub mono" style="font-size:22rpx">{{item.agents.length || 0}} 个智能体</text>
         <text class="sub {{isChosen(item.deviceCode) ? 'state-on' : 'state-off'}}" style="font-size:22rpx">
-          {{isChosen(item.deviceCode) ? '已选择' : '选择'}}
+          {{isChosen(item.deviceCode) ? '当前' : '进入 ›'}}
         </text>
       </view>
     </view>
 
     <view class="box" wx:if="{{devices.length === 0}}" style="margin-top:24rpx">
-      <text class="sub">还没发现电脑。检查 exe 是否在运行，然后点下面的「刷新」。</text>
+      <text class="sub">还没有归到你名下的电脑。在电脑上跑 kuaichuan.exe，然后把配对码填到下面。</text>
     </view>
 
     <input class="input" style="margin-top:20rpx" placeholder="或手动输入配对码"
            placeholder-class="input-ph" value="{{code}}" bindinput="onCode"/>
 
+    <!-- 局域网：只在需要时才露出手动配置 -->
     <view class="box" style="margin-top:20rpx">
       <view class="row">
-        <text style="font-size:26rpx">局域网直连（可选）</text>
-        <text class="sub" style="font-size:20rpx">{{lanOk ? '可用' : '未启用'}}</text>
+        <text style="font-size:26rpx">局域网直连</text>
+        <text class="sub" style="font-size:20rpx">{{lanOk ? '已连接' : '云端中转'}}</text>
       </view>
-      <view class="sub" style="font-size:20rpx;margin-top:6rpx">填电脑的局域网地址，同 WiFi 下直连更快、不花云端额度</view>
-      <input class="input" style="margin-top:14rpx" placeholder="例如 192.168.1.10:8765"
-             placeholder-class="input-ph" value="{{lanHost}}" bindinput="onLanHost"/>
-      <input class="input" style="margin-top:12rpx" placeholder="令牌（exe 启动时的 --token）"
-             placeholder-class="input-ph" value="{{lanToken}}" bindinput="onLanToken"/>
-      <view class="btn-ghost" style="margin-top:14rpx" bindtap="testLan">
-        {{lanTesting ? '正在探测…' : '探测局域网'}}
-      </view>
+
+      <block wx:if="{{lanOk}}">
+        <view class="row" style="margin-top:8rpx">
+          <text class="lan-dot">●</text>
+          <text class="sub mono" style="font-size:21rpx;color:#5fd08a">{{lanHost}}</text>
+        </view>
+        <view class="sub" style="font-size:20rpx;margin-top:4rpx">同一 WiFi，直连更快，不花云端额度</view>
+      </block>
+
+      <block wx:elif="{{!lanManual}}">
+        <view class="sub" style="font-size:20rpx;margin-top:4rpx">
+          同一 WiFi 下会自动连上；用流量时走云端，这里不用管
+        </view>
+        <view class="btn-ghost" style="margin-top:14rpx" bindtap="toggleLanManual">手动配置</view>
+      </block>
+
+      <block wx:else>
+        <input class="input" style="margin-top:14rpx" placeholder="例如 192.168.1.10:8765"
+               placeholder-class="input-ph" value="{{lanHost}}" bindinput="onLanHost"/>
+        <input class="input" style="margin-top:12rpx" placeholder="令牌（不填就是配对码）"
+               placeholder-class="input-ph" value="{{lanToken}}" bindinput="onLanToken"/>
+        <view class="btn-ghost" style="margin-top:14rpx" bindtap="testLan">
+          {{lanTesting ? '正在探测…' : '探测局域网'}}
+        </view>
+        <view class="btn-ghost" style="margin-top:12rpx" bindtap="toggleLanManual">收起</view>
+      </block>
     </view>
 
     <view class="btn-primary" style="margin-top:24rpx" bindtap="testConnection">

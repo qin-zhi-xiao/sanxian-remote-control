@@ -1,10 +1,13 @@
 <view class="term">
   <scroll-view class="out" scroll-y scroll-into-view="{{anchor}}">
-    <view class="line" wx:for="{{lines}}" wx:key="k"><block wx:for="{{item.segs}}" wx:for-item="seg" wx:for-index="si" wx:key="si"><text class="seg{{si}}" style="color:{{seg.c}}">{{seg.t}}</text></block></view>
-    <view id="end" style="height:60rpx"></view>
+    <view class="row {{item.kind}}" wx:for="{{log}}" wx:key="k"><text class="txt">{{item.kind === 'cmd' ? '$ ' : ''}}{{item.text}}</text></view>
+    <view id="end" style="height:40rpx"></view>
   </scroll-view>
 
-  <input class="ghost" value="{{pending}}" bindinput="onInput" bindconfirm="onEnter"
-         confirm-type="send" confirm-hold="{{true}}" adjust-position="{{true}}"
-         cursor-spacing="24" focus="{{focused}}"/>
+  <view class="bar">
+    <input class="inp" value="{{input}}" placeholder="{{busy ? '执行中…' : '输入命令，例如 ls'}}"
+           bindinput="onInput" bindconfirm="onEnter" confirm-type="send" confirm-hold="{{true}}"
+           adjust-position="{{true}}" cursor-spacing="24" disabled="{{busy}}"/>
+    <view class="go {{busy ? 'off' : ''}}" bindtap="send">{{busy ? '…' : '发送'}}</view>
+  </view>
 </view>

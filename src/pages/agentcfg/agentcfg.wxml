@@ -1,0 +1,58 @@
+<view class="screen" style="justify-content:flex-start;padding-top:32rpx">
+  <view class="stack" style="max-width:700rpx">
+
+    <!-- 列表 -->
+    <block wx:if="{{!editing}}">
+      <view class="row">
+        <text class="title-lg" style="font-size:36rpx">智能体配置</text>
+        <text class="sub" style="font-size:20rpx">改完即生效</text>
+      </view>
+      <view class="sub" style="font-size:20rpx;margin-top:8rpx">
+        通过局域网直连电脑读写。密钥类字段会打码，保存时自动还原。
+      </view>
+
+      <view wx:if="{{loading}}" class="sub" style="text-align:center;margin-top:40rpx">读取中…</view>
+
+      <view wx:if="{{err}}" class="box" style="margin-top:24rpx">
+        <text class="sub" style="color:#e0846f;font-size:22rpx">{{err}}</text>
+      </view>
+
+      <view class="box box-press" wx:for="{{list}}" wx:key="id"
+            data-id="{{item.id}}" data-label="{{item.label}}" data-agent="{{item.agent}}"
+            bindtap="openItem" style="margin-top:16rpx">
+        <view class="row">
+          <text style="font-size:25rpx">{{item.label}}</text>
+          <text class="sub" style="font-size:19rpx">{{item.exists ? (item.size + ' B') : '不存在'}}</text>
+        </view>
+        <view class="sub" style="font-size:19rpx;margin-top:4rpx">{{item.agent}}</view>
+        <view class="sub mono" style="font-size:17rpx;margin-top:6rpx;color:#4d535a;word-break:break-all">{{item.path}}</view>
+      </view>
+
+      <view class="btn-ghost" style="margin-top:24rpx" bindtap="load">刷新</view>
+    </block>
+
+    <!-- 编辑 -->
+    <block wx:else>
+      <view class="row">
+        <text class="btn-ghost" style="padding:6rpx 20rpx" bindtap="cancelEdit">返回</text>
+        <text class="sub" style="font-size:20rpx;flex:1;text-align:right">{{editLabel}}</text>
+      </view>
+
+      <view class="box" wx:if="{{editMasked}}" style="margin-top:16rpx;border-color:#3a3226">
+        <text class="sub" style="font-size:19rpx;color:#c9a227">
+          含密钥的字段显示成「__KC_MASKED__」，保存时会自动换回原值，不用管它。
+        </text>
+      </view>
+
+      <textarea class="cfg-editor" value="{{editContent}}" bindinput="onEdit"
+                maxlength="-1" auto-height="{{false}}" show-confirm-bar="{{false}}"/>
+
+      <view class="row" style="margin-top:16rpx">
+        <view class="btn-ghost" style="flex:1" bindtap="copyContent">复制</view>
+        <view style="width:16rpx"></view>
+        <view class="btn-primary" style="flex:2" bindtap="saveEdit">{{saving ? '保存中…' : '保存到电脑'}}</view>
+      </view>
+    </block>
+
+  </view>
+</view>

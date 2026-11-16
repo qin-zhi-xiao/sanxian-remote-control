@@ -1,1 +1,15 @@
 /* 首页布局全部在 app.wxss 的 .screen/.stack 里，这里只留细调 */
+.avatar-sm {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 32rpx;
+  background: #1f242c;
+  border: 1rpx solid #2c3138;
+  color: #c6cad0;
+  font-size: 26rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lan-dot { font-size: 22rpx; color: #5fd08a; margin-right: 8rpx; }

@@ -1,0 +1,64 @@
+<view class="login">
+  <view class="login-brand">
+    <view class="login-logo">快</view>
+    <text class="login-name">快传</text>
+    <text class="login-sub">用手机操作你的电脑</text>
+  </view>
+
+  <!-- 选择登录方式 -->
+  <block wx:if="{{mode === 'choose'}}">
+    <view class="login-body">
+      <view class="lg-btn lg-primary" bindtap="wechatLogin">{{busy ? '登录中…' : '微信一键登录'}}</view>
+      <view class="login-tip">不用授权弹窗，直接进</view>
+
+      <view class="lg-divider"><text>或</text></view>
+
+      <view class="lg-btn" bindtap="showPhone"><text>用手机号登录</text><text class="lg-soon">即将开放</text></view>
+      <view class="login-tip">短信验证码，换设备也能找回</view>
+
+      <view class="lg-btn" style="margin-top:16rpx" bindtap="showEmail"><text>用邮箱和密码登录</text><text class="lg-soon">即将开放</text></view>
+      <view class="login-tip">适合以后用 App 端</view>
+    </view>
+  </block>
+
+  <!-- 手机号登录 -->
+  <block wx:elif="{{mode === 'phone'}}">
+    <view class="login-body">
+      <input class="lg-input" placeholder="手机号" placeholder-class="lg-ph"
+             value="{{phone}}" bindinput="onPhone" type="number" maxlength="11"/>
+      <view class="lg-code-row">
+        <input class="lg-input" style="flex:1;margin-bottom:0" placeholder="6 位验证码"
+               placeholder-class="lg-ph" value="{{code}}" bindinput="onCode" type="number" maxlength="6"/>
+        <view class="lg-code-btn {{countdown > 0 ? 'lg-disabled' : ''}}" bindtap="sendCode">
+          {{countdown > 0 ? countdown + 's' : '获取验证码'}}
+        </view>
+      </view>
+
+      <view class="lg-btn lg-primary" style="margin-top:24rpx" bindtap="phoneLogin">
+        {{busy ? '登录中…' : '登录'}}
+      </view>
+      <view class="lg-btn" style="margin-top:16rpx" bindtap="showChoose">返回</view>
+    </view>
+  </block>
+
+  <!-- 邮箱登录 -->
+  <block wx:else>
+    <view class="login-body">
+      <input class="lg-input" placeholder="邮箱" placeholder-class="lg-ph"
+             value="{{email}}" bindinput="onEmail" type="text"/>
+      <input class="lg-input" placeholder="密码" placeholder-class="lg-ph"
+             value="{{pwd}}" bindinput="onPwd" password/>
+
+      <view class="lg-btn lg-primary" style="margin-top:24rpx" bindtap="emailLogin">
+        {{busy ? '登录中…' : '登录'}}
+      </view>
+      <view class="lg-btn" style="margin-top:16rpx" bindtap="showChoose">返回</view>
+
+      <view class="login-tip" style="margin-top:20rpx;line-height:1.7">
+        邮箱只作账号名，不做验证。还没设过密码就用手机号登录。
+      </view>
+    </view>
+  </block>
+
+  <view class="login-hint" wx:if="{{hint}}">{{hint}}</view>
+</view>

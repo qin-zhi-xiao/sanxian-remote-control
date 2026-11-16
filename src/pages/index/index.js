@@ -7,6 +7,10 @@ Page({
     stage: 'setup',
     devices: [],
     code: '',
+    userInitials: '?',
+    signedOut: false,
+    userLabel: '',
+    userName: '',
     lanHost: '',
     lanToken: '',
     lanOk: false,
@@ -24,6 +28,13 @@ Page({
   },
 
   onLoad: function () {
+    // 退到未登录态时，先让用户选登录方式
+    var user = require('../../utils/user.js');
+    if (user.isSignedOut() || !user.isLoggedIn()) {
+      wx.reLaunch({ url: '/pages/login/login' });
+      return;
+    }
+    this.loginUser();
     var code = relay.getDeviceCode();
     var done = wx.getStorageSync(SETUP_KEY) === true;
     var savedShell = wx.getStorageSync('kc_shell') || 'gitbash';
@@ -45,6 +56,7 @@ Page({
   },
 
   onShow: function () {
+    this.loginUser();
     if (this.data.stage === 'home') this.refresh();
     // 从 shell 选择页返回时同步显示
     var saved = wx.getStorageSync('kc_shell') || 'gitbash';
@@ -80,6 +92,9 @@ Page({
     this.setData({ lanToken: e.detail.value });
   },
 
+  toggleLanManual: function () {
+    this.setData({ lanManual: !this.data.lanManual });
+  },
   testLan: function () {
     var self = this;
     var net = require('../../utils/net.js');
@@ -92,6 +107,7 @@ Page({
       self.setData({
         lanTesting: false,
         lanOk: ok,
+        lanAuto: false,
         hint: ok ? '局域网直连可用：同 WiFi 下会自动走本地' : '探测失败，检查地址、令牌和防火墙'
       });
     });
@@ -109,15 +125,116 @@ Page({
         agentCount: (hit && hit.agents) ? hit.agents.length : 0,
         hint: list.length ? '' : '没发现电脑'
       });
+      // 顺手试一下能不能直连局域网，通了就自动配上，不用用户填地址
+      self.autoLan(list);
     });
   },
 
+  // 自动发现同一 WiFi 下的电脑
+  autoLan: function (list) {
+    var self = this;
+    var net = require('../../utils/net.js');
+    if (this._autoLanBusy) return;
+    this._autoLanBusy = true;
+    net.autoDiscover(list).then(function (base) {
+      self._autoLanBusy = false;
+      if (base) {
+        self.setData({ lanHost: net.getLanHost(), lanToken: net.getLanToken(), lanOk: true, lanAuto: true });
+      } else {
+        // 探测失败可能是不同网络，不清掉用户手填的配置
+        self.setData({ lanAuto: false });
+      }
+    }).catch(function () { self._autoLanBusy = false; });
+  },
+
+  // ---- 账号 ----
+  loginUser: function () {
+    var self = this;
+    var user = require('../../utils/user.js');
+    // 主动退出过就别自动登回来，显示成「登」等用户点
+    if (user.isSignedOut()) {
+      this.setData({ userInitials: '登', signedOut: true, userLabel: '未登录', userName: '' });
+      return;
+    }
+    user.ensureLogin().then(function () {
+      self.setData({ userInitials: user.initials(), signedOut: false, userLabel: '', userName: user.displayName() });
+    }).catch(function () {
+      self.setData({ userInitials: '?' });
+    });
+  },
+
+  // 用户主动点登录
+  doSignIn: function () {
+    var self = this;
+    var user = require('../../utils/user.js');
+    wx.showLoading({ title: '登录中…' });
+    user.signIn().then(function (u) {
+      wx.hideLoading();
+      self.setData({ userInitials: user.initials(), signedOut: false, userLabel: '', userName: user.displayName() });
+      wx.showToast({ title: '已登录', icon: 'success' });
+    }).catch(function (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '登录失败', icon: 'none' });
+    });
+  },
+
+
+  // 开发者：长按头像恢复默认未登录态
+  devReset: function () {
+    var self = this;
+    wx.showActionSheet({
+      itemList: ['恢复默认（清本地缓存）', '全部清空（含新 key）', '取消'],
+      itemColor: '#e0846f',
+      success: function (res) {
+        if (res.tapIndex === 2) return;
+        var wipeAll = res.tapIndex === 1;
+        wx.showModal({
+          title: wipeAll ? '全部清空？' : '恢复默认？',
+          content: wipeAll
+            ? '把这台设备上小程序存的所有数据都清掉。云端账号记录不动。'
+            : '清掉账号、配对码、历史、会话和局域网配置，回到首次打开的状态。云端账号记录不动。',
+          confirmText: wipeAll ? '全部清空' : '清掉',
+          confirmColor: '#e0846f',
+          success: function (r2) {
+            if (!r2.confirm) return;
+            var user = require('../../utils/user.js');
+            var removed = user.resetToLoggedOut({ wipeAll: wipeAll });
+            wx.showToast({ title: '已清除 ' + removed.length + ' 项', icon: 'success' });
+            // 回到首页的配置态
+            setTimeout(function () {
+              wx.reLaunch({ url: '/pages/login/login' });
+            }, 900);
+          }
+        });
+      }
+    });
+  },
+  goAccount: function () {
+    if (this.data.signedOut) { this.doSignIn(); return; }
+    wx.navigateTo({ url: '/pages/account/account' });
+  },
+  // 点设备卡片 = 直接进，不用再填配对码、也不用再点测试连接
   chooseDevice: function (e) {
+    var self = this;
     var code = e.currentTarget.dataset.code;
     var name = e.currentTarget.dataset.name || code;
     relay.setDeviceCode(code);
     relay.setMock(false);
     this.setData({ chosenCode: code, code: code, online: true, connectedName: name, mock: false });
+
+    // 直接绑定到当前账号并进主页；联网校验交给后台，不挡路
+    wx.showLoading({ title: '正在连接…' });
+    var user = require('../../utils/user.js');
+    user.ensureLogin().then(function () {
+      return relay.claimDevice(code);
+    }).catch(function () {
+      // 绑定失败（比如设备已被别人绑）不阻塞进入，只是不进我的设备列表
+    }).then(function () {
+      wx.hideLoading();
+      wx.setStorageSync(SETUP_KEY, true);
+      self.setData({ testing: false, stage: 'home', hint: '' });
+      self.refresh();
+    });
   },
 
   onCode: function (e) {
@@ -160,12 +277,18 @@ Page({
       if (r.status === 'done') {
         clearInterval(timer);
         wx.setStorageSync(SETUP_KEY, true);
-        self.setData({
-          testing: false,
-          stage: 'home',
-          online: true,
-          connectedName: self.data.connectedName || ('电脑 ' + code),
-          hint: ''
+        // 配对成功就把这台电脑绑到当前账号名下，之后只在自己这里可见
+        var user = require('../../utils/user.js');
+        user.ensureLogin().then(function () {
+          return relay.claimDevice(code);
+        }).catch(function () {}).then(function () {
+          self.setData({
+            testing: false,
+            stage: 'home',
+            online: true,
+            connectedName: self.data.connectedName || ('电脑 ' + code),
+            hint: ''
+          });
         });
       } else if (r.status === 'error' || r.status === 'timeout' || tries > 25) {
         clearInterval(timer);

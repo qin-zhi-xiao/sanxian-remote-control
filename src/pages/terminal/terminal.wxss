@@ -1,15 +1,36 @@
 page { height: 100%; }
-.term { position: relative; height: 100vh; background: #0b0c0e; overflow: hidden; }
-.out { height: 100%; padding: 16rpx 20rpx 0; box-sizing: border-box; }
-.line {
-  font-family: Consolas, "SF Mono", monospace; font-size: 24rpx; line-height: 1.45;
-  color: #c6cad0; white-space: pre-wrap; word-break: break-all;
+.term { height: 100vh; background: #0b0c0e; display: flex; flex-direction: column; overflow: hidden; }
+
+.out { flex: 1; padding: 20rpx 22rpx 0; box-sizing: border-box; }
+
+.row {
   display: block;
+  font-family: Consolas, "SF Mono", monospace;
+  font-size: 25rpx;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin-bottom: 6rpx;
 }
-/* 颜色片段：纯内联，不加任何边框/背景，避免出现“框” */
-.seg { white-space: pre-wrap; -webkit-user-select: none; user-select: none; }
-.ghost {
-  position: fixed; left: 0; top: 0; width: 100%; height: 100%;
-  color: transparent; background: transparent; caret-color: transparent;
-  opacity: 0.01; z-index: 99; border: none; padding: 0; line-height: normal;
+.row.cmd .txt { color: #e8eaed; font-weight: 600; }
+.row.out .txt { color: #c6cad0; }
+.row.err .txt { color: #ff8a80; }
+.row.sys .txt { color: #6d737b; }
+
+.bar {
+  display: flex; align-items: center;
+  padding: 14rpx 18rpx calc(14rpx + env(safe-area-inset-bottom));
+  background: #121417; border-top: 1rpx solid #1e2126;
 }
+.inp {
+  flex: 1; height: 76rpx; padding: 0 22rpx;
+  background: #1a1d22; border-radius: 14rpx;
+  color: #e8eaed; font-size: 27rpx;
+  font-family: Consolas, "SF Mono", monospace;
+}
+.go {
+  margin-left: 14rpx; padding: 0 30rpx; height: 76rpx; line-height: 76rpx;
+  background: #e8eaed; color: #0b0c0e; border-radius: 14rpx;
+  font-size: 27rpx; font-weight: 600;
+}
+.go.off { background: #33373d; color: #8b9199; }

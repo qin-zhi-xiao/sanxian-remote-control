@@ -24,6 +24,8 @@ function call(action, payload) {
     return Promise.reject(new Error('当前环境没有 wx.cloud.callFunction'));
   }
   var data = { action: action };
+  // 带上登录 token，云端据此解析 uid（设备归属按 uid，不按 openid）
+  try { data.token = wx.getStorageSync('kc_token') || ''; } catch (e) {}
   for (var k in (payload || {})) data[k] = payload[k];
   return wx.cloud.callFunction({ name: FN, data: data }).then(function (res) {
     var r = (res && res.result) || {};
@@ -192,6 +194,24 @@ function agentSend(agent, exe, text, headless) {
 function agentResult(id) {
   return call('agent_result', { id: id });
 }
+function pushGrant() {
+  return call('push_grant', {});
+}
+function pushStatus() {
+  return call('push_status', {});
+}
+function deviceRemove(deviceCode) {
+  return call('device_remove', { deviceCode: deviceCode });
+}
+function deviceDelete(deviceCode) {
+  return call('device_delete', { deviceCode: deviceCode });
+}
+function deviceRename(deviceCode, name) {
+  return call('device_rename', { deviceCode: deviceCode, name: name });
+}
+function claimDevice(deviceCode) {
+  return call('device_claim', { deviceCode: deviceCode });
+}
 function cloudProbe() {
   return new Promise(function (resolve) {
     if (!wx.cloud) {
@@ -219,6 +239,12 @@ module.exports = {
   termGetShell: termGetShell,
   termRestart: termRestart,
   agentAsk: agentAsk,
+  claimDevice: claimDevice,
+  deviceRemove: deviceRemove,
+  deviceDelete: deviceDelete,
+  deviceRename: deviceRename,
+  pushGrant: pushGrant,
+  pushStatus: pushStatus,
   agentSend: agentSend,
   agentResult: agentResult,
   cloudProbe: cloudProbe,

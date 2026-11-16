@@ -16,6 +16,7 @@
       <view class="drawer-empty" wx:if="{{sessions.length === 0}}">还没有对话</view>
     </scroll-view>
     <view class="drawer-foot">
+      <view class="drawer-cfg" bindtap="goConfig">⚙ 智能体配置</view>
       <text class="drawer-dev">{{online ? deviceName : '未连接'}}</text>
     </view>
   </view>
@@ -27,6 +28,10 @@
       <text class="topbar-title">{{currentAgent || '选择一个智能体'}}</text>
       <text class="topbar-sub">{{online ? deviceName : '未连接'}}{{modeLabel ? ' · ' + modeLabel : ''}}</text>
     </view>
+    <view class="bell {{pushQuota > 0 ? 'bell-on' : ''}}" bindtap="tapBell">
+      <text style="font-size:30rpx">{{pushQuota > 0 ? '🔔' : '🔕'}}</text>
+      <text class="bell-num" wx:if="{{pushQuota > 0}}">{{pushQuota}}</text>
+    </view>
     <text class="topbar-pick" bindtap="openPicker">切换</text>
   </view>
 
@@ -34,10 +39,17 @@
   <scroll-view class="msgs" scroll-y scroll-into-view="{{anchor}}" scroll-with-animation>
     <view class="msg" wx:for="{{messages}}" wx:key="id" id="{{item.id}}">
       <view class="bubble {{item.role === 'me' ? 'bubble-me' : 'bubble-ai'}}">{{item.text}}</view>
+      <!-- 从回复里抽出来的文件，做成小标签 -->
+      <view class="chips" wx:if="{{item.files && item.files.length}}">
+        <text class="chip" wx:for="{{item.files}}" wx:for-item="f" wx:key="*this">{{f}}</text>
+      </view>
       <text class="msg-time" wx:if="{{item.time}}">{{item.time}}</text>
     </view>
     <view class="msg" wx:if="{{busy}}">
-      <view class="bubble bubble-ai bubble-wait">对方正在输入…</view>
+      <view class="bubble bubble-ai bubble-wait">
+        <text>{{busyText}}</text>
+        <text wx:if="{{busySec > 0}}" style="margin-left:8rpx;opacity:0.7">{{busySec}}s</text>
+      </view>
     </view>
     <view class="msgs-empty" wx:if="{{messages.length === 0 && !busy}}">
       <text class="msgs-empty-title">{{currentAgent ? '和 ' + currentAgent + ' 开始对话' : '先选一个智能体'}}</text>

@@ -1,0 +1,31 @@
+.avatar {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 56rpx;
+  background: #1f242c;
+  border: 1rpx solid #2c3138;
+  color: #c6cad0;
+  font-size: 44rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dev {
+  border-top: 1rpx solid #1a1e24;
+  padding-top: 14rpx;
+}
+.dev-dot { font-size: 19rpx; }
+.dev-dot.on { color: #5fd08a; }
+.dev-dot.off { color: #5a6068; }
+.dev-act {
+  font-size: 21rpx;
+  color: #8fb4d9;
+  padding: 6rpx 18rpx;
+  border: 1rpx solid #232b36;
+  border-radius: 6rpx;
+  margin-right: 12rpx;
+}
+.dev-act.danger { color: #e0846f; border-color: #3a2226; }

@@ -1,0 +1,14 @@
+.cfg-editor {
+  width: 100%;
+  height: 760rpx;
+  margin-top: 16rpx;
+  padding: 20rpx;
+  box-sizing: border-box;
+  background: #121418;
+  border: 1rpx solid #23272e;
+  border-radius: 12rpx;
+  color: #c6cad0;
+  font-size: 21rpx;
+  line-height: 1.6;
+  font-family: Consolas, Menlo, monospace;
+}

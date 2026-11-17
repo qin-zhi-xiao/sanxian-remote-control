@@ -35,7 +35,7 @@ pages/agent / agentcfg  ─┘        │
 | `cloud/kuaichuan-fn/` | 小程序侧云函数（登录、会话、设备、命令） |
 | `cloud/kuaichuan-relay/` | HTTP 网关中继云函数（重点） |
 | `cloud/README.md` | **云函数部署、环境变量、鉴权、接口一览** |
-| `dist/` | 本机运行用 exe（376,320 字节，11/3 构建）、`启动快传.bat`（局域网模式） |
+| `dist/` | 本机运行用 exe（423,424 字节，v1.5.0）、`启动快传.bat`（局域网模式） |
 | `releases/` | 分发 exe / zip / 启动脚本（只放行正式分发文件，密钥与日志一律忽略） |
 | `docs/` | 项目报告 / 需求方案 / 云开发打通记录 / 开发记录 |
 | `tools/` | CDP 自动化脚本（`push.js` 上传体验版、`rel-*.js` 发 release），大量截图 |
@@ -92,32 +92,27 @@ cd pc; cargo build --release        # 产物 pc/target/release/kuaichuan.exe
 ## 当前状态（git）
 
 - 远端 `github.com/qin-zhi-xiao/sanxian-remote-control`（**公开仓库**）。
-- 2026-11-16 做了一次「收尾快照提交」，把安全修复、新页面（login / account / agentcfg）、
-  图标资源、v1.5.0 分发文件与文档校对一并落地；提交后 `git status` 应接近干净。
-  具体 HEAD 用 `git log -1` 看，别信文档里写死的 hash。
-- **本地提交不等于推送**：推送前先确认没有把密钥或临时文件带上去。
+- **2026-11-17 已重写全部历史**（`git filter-branch`，5 个提交 hash 全换）：
+  v1.3.0 起随源码入库的旧 API Key 已替换为 `REMOVED-ROTATED-20261116` 占位符，
+  并已 force push 到远端。重写前的完整历史备份在 `工作区/快传-backup-20261117.bundle`。
+  GitHub 可能短暂缓存旧 SHA 直链，彻底清除需联系 GitHub Support 跑 GC。
+- 2026-11-17 起版本号统一为 **1.5.0**，tag `v1.5.0` 对应正式发布构建（423,424 字节）。
+- HEAD 用 `git log -1` 看，别信文档里写死的 hash。
 
-## 版本号现状（尚未统一，下次发版一并处理）
+## 版本号（2026-11-17 已统一为 1.5.0）
 
-| 位置 | 当前值 |
-|---|---|
-| README「已发布」 | v1.4.0 |
-| 工作区 / `releases/kuaichuan-v1.5.0.exe` | v1.5.0 开发快照（11/6 构建，非当前源码） |
-| `pc/src/main.rs` `VERSION` | 1.4.0 |
-| `pc/Cargo.toml` | 0.1.0 |
-| `cloud/kuaichuan-fn/package.json` | 1.4.0 |
-| `cloud/kuaichuan-relay/package.json` | 1.0.0 |
+README / `pc/src/main.rs` `VERSION` / `pc/Cargo.toml` / `cloud/kuaichuan-fn/package.json` /
+`cloud/kuaichuan-relay/package.json` 全部为 **1.5.0**，tag `v1.5.0`。
 
-> 改源码版本号就要重新编译 exe，否则「源码写 1.5.0、exe 报 1.4.0」又是一对新的不一致。
+> 改源码版本号后必须重新 `cargo build --release` 并更新 `releases/` 产物，
+> 否则又会出现「源码 1.5.0、exe 报旧版」的不一致。
 
 ## 下一步（按优先级）
 
-1. 统一版本号 + 重新构建并发布正式 v1.5.0
-2. canvas 渲染终端，解决无颜色 / 滚动卡顿
-3. 轮询 600ms → 300ms，压缩延迟
-4. `Ctrl+C` 透传
-5. 局域网直连走 UDP 广播自动发现，省掉手动填 IP
-6. git 历史清理（需 force push，**必须先拿到授权**）、删除无路由的遗留模板云函数
+1. canvas 渲染终端，解决无颜色 / 滚动卡顿
+2. 轮询 600ms → 300ms，压缩延迟
+3. `Ctrl+C` 透传
+4. 局域网直连走 UDP 广播自动发现，省掉手动填 IP
 
 ## 文档索引
 

@@ -29,7 +29,7 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-const VERSION: &str = "1.4.0";
+const VERSION: &str = "1.5.0";
 
 /// 进程启动时间（毫秒时间戳），控制台用来算运行时长
 static START_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

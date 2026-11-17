@@ -41,13 +41,13 @@
 
 ## 📥 下载
 
-**Windows 客户端**（单文件，免安装，发布版约 370 KB / 376,320 字节）
+**Windows 客户端**（单文件，免安装，v1.5.0 约 414 KB / 423,424 字节）
 
-- [kuaichuan.exe（v1.4.0）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.4.0.exe)
-- [zip 打包版（含启动脚本）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.4.0-win64.zip)
+- [kuaichuan.exe（v1.5.0）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0.exe)
+- [zip 打包版](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0-win64.zip)
 
-> 下载的是 v1.4.0 发布包，**包内不含新密钥**。首次使用请把新的 `.cloudbase-apikey`
-> 放到 exe 同目录再启动，否则连不上网关。
+> 发布包**不含密钥**。首次使用请把 `.cloudbase-apikey`（云开发 API Key）
+> 放到 exe 同目录再启动，否则网关返回 401。
 
 ### 首次使用
 
@@ -61,8 +61,8 @@
 
 | | |
 |---|---|
-| 已发布 | **v1.4.0** — [Release Notes](https://github.com/qin-zhi-xiao/sanxian-remote-control/releases/tag/v1.4.0) |
-| 工作区源码 | v1.5.0 开发快照（未打 tag；`releases/kuaichuan-v1.5.0.exe` 为本地构建） |
+| 已发布 | **v1.5.0**（2026-11-17）— [Release Notes](https://github.com/qin-zhi-xiao/sanxian-remote-control/releases/tag/v1.5.0) |
+| 工作区源码 | 与发布一致（tag `v1.5.0`） |
 
-> 版本号在 README、`pc/src/main.rs`、`pc/Cargo.toml`、两个云函数 `package.json` 之间尚未统一，
-> 下次发版时一并处理；现状清单见 `CODEBUDDY.md`。
+> 版本号已在 README、`pc/src/main.rs`、`pc/Cargo.toml`、两个云函数 `package.json` 之间统一为 1.5.0。
+> 改源码版本号后记得重新 `cargo build --release` 并更新 `releases/` 产物。

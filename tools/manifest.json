@@ -1,7 +1,224 @@
 {
   "files": [
-    { "type": "file", "name": "pages/terminal/terminal.js",   "parent": "pages/terminal" },
-    { "type": "file", "name": "pages/terminal/terminal.wxml", "parent": "pages/terminal" },
-    { "type": "file", "name": "pages/terminal/terminal.wxss", "parent": "pages/terminal" }
+    {
+      "type": "dir",
+      "name": "pages",
+      "parent": ""
+    },
+    {
+      "type": "dir",
+      "name": "pages/account",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/agent",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/agentcfg",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/index",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/login",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/shell",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "pages/terminal",
+      "parent": "pages"
+    },
+    {
+      "type": "dir",
+      "name": "utils",
+      "parent": ""
+    },
+    {
+      "type": "file",
+      "name": "app.js",
+      "parent": "open"
+    },
+    {
+      "type": "file",
+      "name": "app.json",
+      "parent": "open"
+    },
+    {
+      "type": "file",
+      "name": "app.wxss",
+      "parent": "open"
+    },
+    {
+      "type": "file",
+      "name": "utils/net.js",
+      "parent": "utils"
+    },
+    {
+      "type": "file",
+      "name": "utils/relay.js",
+      "parent": "utils"
+    },
+    {
+      "type": "file",
+      "name": "utils/tmpl.js",
+      "parent": "utils"
+    },
+    {
+      "type": "file",
+      "name": "utils/user.js",
+      "parent": "utils"
+    },
+    {
+      "type": "file",
+      "name": "pages/account/account.js",
+      "parent": "pages/account"
+    },
+    {
+      "type": "file",
+      "name": "pages/account/account.json",
+      "parent": "pages/account"
+    },
+    {
+      "type": "file",
+      "name": "pages/account/account.wxml",
+      "parent": "pages/account"
+    },
+    {
+      "type": "file",
+      "name": "pages/account/account.wxss",
+      "parent": "pages/account"
+    },
+    {
+      "type": "file",
+      "name": "pages/agent/agent.js",
+      "parent": "pages/agent"
+    },
+    {
+      "type": "file",
+      "name": "pages/agent/agent.json",
+      "parent": "pages/agent"
+    },
+    {
+      "type": "file",
+      "name": "pages/agent/agent.wxml",
+      "parent": "pages/agent"
+    },
+    {
+      "type": "file",
+      "name": "pages/agent/agent.wxss",
+      "parent": "pages/agent"
+    },
+    {
+      "type": "file",
+      "name": "pages/agentcfg/agentcfg.js",
+      "parent": "pages/agentcfg"
+    },
+    {
+      "type": "file",
+      "name": "pages/agentcfg/agentcfg.json",
+      "parent": "pages/agentcfg"
+    },
+    {
+      "type": "file",
+      "name": "pages/agentcfg/agentcfg.wxml",
+      "parent": "pages/agentcfg"
+    },
+    {
+      "type": "file",
+      "name": "pages/agentcfg/agentcfg.wxss",
+      "parent": "pages/agentcfg"
+    },
+    {
+      "type": "file",
+      "name": "pages/index/index.js",
+      "parent": "pages/index"
+    },
+    {
+      "type": "file",
+      "name": "pages/index/index.json",
+      "parent": "pages/index"
+    },
+    {
+      "type": "file",
+      "name": "pages/index/index.wxml",
+      "parent": "pages/index"
+    },
+    {
+      "type": "file",
+      "name": "pages/index/index.wxss",
+      "parent": "pages/index"
+    },
+    {
+      "type": "file",
+      "name": "pages/login/login.js",
+      "parent": "pages/login"
+    },
+    {
+      "type": "file",
+      "name": "pages/login/login.json",
+      "parent": "pages/login"
+    },
+    {
+      "type": "file",
+      "name": "pages/login/login.wxml",
+      "parent": "pages/login"
+    },
+    {
+      "type": "file",
+      "name": "pages/login/login.wxss",
+      "parent": "pages/login"
+    },
+    {
+      "type": "file",
+      "name": "pages/shell/shell.js",
+      "parent": "pages/shell"
+    },
+    {
+      "type": "file",
+      "name": "pages/shell/shell.json",
+      "parent": "pages/shell"
+    },
+    {
+      "type": "file",
+      "name": "pages/shell/shell.wxml",
+      "parent": "pages/shell"
+    },
+    {
+      "type": "file",
+      "name": "pages/shell/shell.wxss",
+      "parent": "pages/shell"
+    },
+    {
+      "type": "file",
+      "name": "pages/terminal/terminal.js",
+      "parent": "pages/terminal"
+    },
+    {
+      "type": "file",
+      "name": "pages/terminal/terminal.json",
+      "parent": "pages/terminal"
+    },
+    {
+      "type": "file",
+      "name": "pages/terminal/terminal.wxml",
+      "parent": "pages/terminal"
+    },
+    {
+      "type": "file",
+      "name": "pages/terminal/terminal.wxss",
+      "parent": "pages/terminal"
+    }
   ]
 }

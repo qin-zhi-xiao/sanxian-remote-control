@@ -39,6 +39,40 @@ async function handle(req) {
     const r = await db('GET', '/collections/' + CMD + '/documents?query=' + q + '&limit=' + limit);
     return { ok: true, list: r.list || [] };
   }
+  if (a === 'sync') {
+    // 一次请求拉全：命令 / 终端输入 / 智能体消息 / shell 状态，并支持长轮询 hold（毫秒）。
+    // 目的：把 exe 端每轮 3~4 次串行 HTTP RTT 合并成 1 次并发；有数据立即返回，无数据挂起到 hold 上限。
+    const limit = Math.min(Number(req.limit) || 5, 20);
+    const hold = Math.min(Math.max(Number(req.hold) || 0, 0), 25000);
+    const code = req.deviceCode || '';
+    const deadline = Date.now() + hold;
+    const qPending = encodeURIComponent('{"status":"pending"}');
+    const t0 = Date.now();
+    let out = null;
+    do {
+      const reqs = [
+        db('GET', '/collections/' + CMD + '/documents?query=' + qPending + '&limit=' + limit),
+        db('GET', '/collections/term_in_4759588622381809665/documents?query=' + qPending + '&limit=5'),
+        db('GET', '/collections/agent_in_4759588622381809665/documents?query=' + qPending + '&limit=3'),
+      ];
+      if (code) reqs.push(db('GET', '/collections/' + DEV + '/documents?query=' + encodeURIComponent(JSON.stringify({ deviceCode: code })) + '&limit=1'));
+      const rs = await Promise.all(reqs);
+      const cmds = rs[0].list || [], termIn = rs[1].list || [], agentIn = rs[2].list || [];
+      out = { ok: true, commands: cmds, termIn: termIn, agentIn: agentIn, waited: 0 };
+      if (code) {
+        const d = ((rs[3] || {}).list || [])[0] || {};
+        let ra = d.termRestartAt;
+        if (ra && typeof ra === 'object') ra = ra.$numberLong !== undefined ? ra.$numberLong : ra.$numberInt;
+        out.shell = d.termShell || 'gitbash';
+        out.restartAt = Number(ra) || 0;
+      }
+      if (cmds.length || termIn.length || agentIn.length) break;
+      if (!hold) break;
+      await new Promise(r => setTimeout(r, 100));
+    } while (Date.now() < deadline);
+    out.waited = Date.now() - t0;
+    return out;
+  }
   if (a === 'update') {
     if (!req.id) return { ok: false, error: 'missing id' };
     const d = Object.assign({}, req.patch || {}); delete d._id;

@@ -73,3 +73,5 @@ dist/kuaichuan.exe
 # 本地备份与 AI 工作区数据（保留在本机，不进公开仓库）
 *.bak
 .workbuddy/
+# exe 网关调用的临时请求/响应文件（运行中随时生成）
+.kc-*

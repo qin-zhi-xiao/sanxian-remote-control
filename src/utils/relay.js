@@ -120,7 +120,7 @@ function run(cmd) {
 }
 
 function poll(localId, docId, n) {
-  if (n > 25) {
+  if (n > 80) {
     updateRecord(localId, { status: 'timeout', stderr: '等了 20 秒没有电脑回应，检查电脑端 exe 是否在跑' });
     return Promise.resolve(getRecord(localId));
   }
@@ -136,11 +136,11 @@ function poll(localId, docId, n) {
     });
     if (r.status === 'done' || r.status === 'error' || r.status === 'timeout') return getRecord(localId);
     return new Promise(function (resolve) {
-      setTimeout(function () { resolve(poll(localId, docId, n + 1)); }, 800);
+      setTimeout(function () { resolve(poll(localId, docId, n + 1)); }, 250);
     });
   }).catch(function () {
     return new Promise(function (resolve) {
-      setTimeout(function () { resolve(poll(localId, docId, n + 1)); }, 800);
+      setTimeout(function () { resolve(poll(localId, docId, n + 1)); }, 250);
     });
   });
 }

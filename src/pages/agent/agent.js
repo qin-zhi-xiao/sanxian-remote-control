@@ -297,12 +297,12 @@ Page({
         if (doc.status === 'done') {
           clearInterval(timer);
           self.fillReply((doc.reply || '').trim() || '（没有输出）');
-        } else if (tries > 180) {
+        } else if (tries > 360) {
           clearInterval(timer);
           self.fillReply('（超时，电脑端没有回应）');
         }
       }).catch(function () {});
-    }, 1000);
+    }, 500);
   },
 
   pollResult: function (recId, myId) {

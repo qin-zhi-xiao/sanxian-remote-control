@@ -1583,9 +1583,15 @@ fn urlencode(s: &str) -> String {
 }
 
 fn list_objects(json: &str) -> Vec<String> {
+    list_objects_in(json, "list")
+}
+
+/// 按数组键提取对象列表（sync 响应里 commands/termIn/agentIn 是各自独立的数组）
+fn list_objects_in(json: &str, key: &str) -> Vec<String> {
     let mut out = Vec::new();
     let bytes = json.as_bytes();
-    let lpos = match find_sub(bytes, b"\"list\"") {
+    let pat = format!("\"{}\"", key);
+    let lpos = match find_sub(bytes, pat.as_bytes()) {
         Some(p) => p,
         None => return out,
     };
@@ -1941,18 +1947,20 @@ fn run_gateway(cfg: Config) {
     println!("==============================================");
 
     let mut hb_agents = agents_json(&agents);
-    let mut tick: u64 = 0;
     let mut last_term_seq: u64 = 0;
+    let mut last_hb: u128 = 0;
+    let mut last_scan: u128 = 0;
     loop {
-        if tick % 8 == 0 {
-            // 每分钟重扫一次，保证版本号不会停在启动那一刻
-            if tick % 40 == 0 {
+        // 心跳与重扫描改为时间驱动：长轮询后循环周期不再固定
+        let now = now_ms();
+        if now.saturating_sub(last_hb) >= 12000 {
+            last_hb = now;
+            if now.saturating_sub(last_scan) >= 60000 {
+                last_scan = now;
                 let fresh = detect_agents();
                 hb_agents = agents_json(&fresh);
                 println!("  [扫描] 已重新识别 {} 个智能体", fresh.len());
             }
-            // 顺手把局域网地址报上去，小程序据此自动发现同一 WiFi 下的电脑，
-            // 用户就不用再手输 IP 和令牌了
             let lan = local_ip().unwrap_or_default();
             let body = format!(
                 "{{\"action\":\"heartbeat\",\"deviceCode\":\"{}\",\"name\":\"{}\",\"agents\":{},\"lanIp\":\"{}\",\"lanPort\":{}}}",
@@ -1962,47 +1970,33 @@ fn run_gateway(cfg: Config) {
                 println!("  ! 心跳失败: {}", e);
             }
         }
-        tick += 1;
 
-        let body = "{\"action\":\"poll\",\"limit\":5}";
-        match gw_call(&cfg.gw_url, &key, body) {
+        // 一次请求拉全（长轮询 15s）：命令 / 终端按键 / 智能体消息 / shell 状态。
+        // 原来是 poll + agent_in + term_in + shell_get 四次串行 RTT，再固定 sleep 1200ms。
+        let body = format!(
+            "{{\"action\":\"sync\",\"deviceCode\":\"{}\",\"limit\":5,\"hold\":15000}}",
+            esc(&code)
+        );
+        match gw_call(&cfg.gw_url, &key, &body) {
             Ok(resp) => {
-                for d in list_objects(&resp) {
+                for d in list_objects_in(&resp, "commands") {
                     gw_handle(&cfg.gw_url, &key, &code, &cfg, &d);
                 }
-            }
-            Err(e) => {
-                println!("  ! 轮询失败: {}", e);
-                thread::sleep(Duration::from_secs(3));
-            }
-        }
-        // ---- 终端：检查 shell 是否被手机切换 ----
-        if tick % 5 == 0 {
-            let q = format!("{{\"action\":\"term_shell_get\",\"deviceCode\":\"{}\"}}", esc(&code));
-            if let Ok(resp) = gw_call(&cfg.gw_url, &key, &q) {
+
+                // ---- 终端：shell 切换 / 重启 ----
                 let parsed = json_str(&resp, "shell");
-                let cur = TERM_SHELL.lock().ok().and_then(|q| q.clone());
-                klog(&format!("    [轮询] shell 原始响应={}  解析={:?}  当前={:?}", resp, parsed, cur));
+                let cur_shell = TERM_SHELL.lock().ok().and_then(|q| q.clone());
                 if let Some(sh) = parsed {
-                    match cur.as_deref() {
-                        // 首次读到云端值：只记住，绝不重置。
-                        // 否则如果手机已经抢先敲了命令（比如 claude），
-                        // 这次重置会把正在启动的程序直接杀掉。
+                    match cur_shell.as_deref() {
+                        // 首次读到云端值：只记住，绝不重置
                         None => {
-                            klog(&format!("    [终端] 采用云端 shell = {}（首次）", sh));
                             if let Ok(mut g) = TERM_SHELL.lock() {
                                 *g = Some(sh.clone());
                             }
-                            // 会话可能已经用默认 shell 建好了，这里要核实一次。
-                            // 之前只记值不重建，结果选了 PowerShell 还是 Git Bash。
                             if let Ok(guard) = TERM.lock() {
                                 if guard.is_some() {
                                     let started = CUR_SHELL.lock().ok().and_then(|q| q.clone());
                                     if started.as_deref() != Some(sh.as_str()) {
-                                        klog(&format!(
-                                            "    [终端] 会话 shell 不符（当前 {:?}），重建",
-                                            started
-                                        ));
                                         drop(guard);
                                         term_reset();
                                     }
@@ -2015,13 +2009,11 @@ fn run_gateway(cfg: Config) {
                                 *g = Some(sh);
                             }
                             term_reset();
-                            // 立刻用新 shell 重建；不建的话会一直等第一个按键才启动
                             let _ = ensure_term();
                         }
                         _ => {}
                     }
                 }
-                // 手机端「重新打开终端」会更新 restartAt，变化就重建一个干净会话
                 if let Some(ra) = json_num(&resp, "restartAt") {
                     if ra > 0 {
                         let mut last = LAST_RESTART.lock().unwrap_or_else(|e| e.into_inner());
@@ -2031,9 +2023,7 @@ fn run_gateway(cfg: Config) {
                             if !first {
                                 klog("    [终端] 收到重启请求，重建会话");
                                 term_reset();
-                                // 重置后必须立刻重建，否则要等第一个按键才会起 shell
                                 let _ = ensure_term();
-                                // 推一个空帧，让手机端立刻清屏（否则会停在旧画面上）
                                 let body = format!(
                                     "{{\"action\":\"term_push\",\"deviceCode\":\"{}\",\"seq\":{},\"text\":\"\"}}",
                                     esc(&code),
@@ -2044,93 +2034,90 @@ fn run_gateway(cfg: Config) {
                         }
                     }
                 }
-            }
-        }
 
-        // ---- Agent：拉取待发送的消息 ----
-        if let Ok(resp) = gw_call(&cfg.gw_url, &key, "{\"action\":\"agent_in\"}") {
-            for d in list_objects(&resp) {
-                let id = match doc_id(&d) { Some(x) => x, None => continue };
-                let text = json_str(&d, "text").unwrap_or_default();
-                let agent = json_str(&d, "agent").unwrap_or_else(|| "claude".to_string());
-                let exe = json_str(&d, "exe").unwrap_or_else(|| agent.clone());
-                if text.trim().is_empty() { continue; }
+                // ---- Agent：拉取待发送的消息 ----
+                for d in list_objects_in(&resp, "agentIn") {
+                    let id = match doc_id(&d) { Some(x) => x, None => continue };
+                    let text = json_str(&d, "text").unwrap_or_default();
+                    let agent = json_str(&d, "agent").unwrap_or_else(|| "claude".to_string());
+                    let exe = json_str(&d, "exe").unwrap_or_else(|| agent.clone());
+                    if text.trim().is_empty() { continue; }
 
-                klog(&format!("    [agent] 收到消息 -> {}", agent));
-                // 默认走 headless：一次提问拿纯文本，比 PTY 抢屏可靠得多。
-                // 只有显式传 headless=0 才返回下面的常驻会话分支。
-                let headless = json_str(&d, "headless").unwrap_or_else(|| "1".to_string());
-                if headless != "0" {
-                    let args = agent_args(&exe, &text);
-                    klog(&format!("    [agent] headless: {} {:?}", exe, args));
-                    let out = run_headless(&exe, &args, 150000);
-                    let reply = match out {
-                        Ok(s) => {
-                            let c = strip_ansi(&s);
-                            if c.trim().is_empty() { "（没有输出）".to_string() } else { c }
-                        }
-                        Err(e) => format!("（执行失败：{}）", e),
-                    };
+                    klog(&format!("    [agent] 收到消息 -> {}", agent));
+                    // 默认 headless：一次提问拿纯文本；显式 headless=0 才走常驻会话
+                    let headless = json_str(&d, "headless").unwrap_or_else(|| "1".to_string());
+                    if headless != "0" {
+                        let args = agent_args(&exe, &text);
+                        klog(&format!("    [agent] headless: {} {:?}", exe, args));
+                        let out = run_headless(&exe, &args, 150000);
+                        let reply = match out {
+                            Ok(s) => {
+                                let c = strip_ansi(&s);
+                                if c.trim().is_empty() { "（没有输出）".to_string() } else { c }
+                            }
+                            Err(e) => format!("（执行失败：{}）", e),
+                        };
+                        let body = format!(
+                            "{{\"action\":\"agent_reply\",\"deviceCode\":\"{}\",\"id\":\"{}\",\"text\":\"{}\"}}",
+                            esc(&code), gw_json_url(&id), esc(&reply)
+                        );
+                        let _ = gw_call(&cfg.gw_url, &key, &body);
+                        continue;
+                    }
+
+                    let mut reply;
+                    match agent_ensure(&agent, &exe) {
+                        Ok(_) => match agent_ask(&text, 90000) {
+                            Ok(raw) => reply = strip_ansi(&raw),
+                            Err(e) => reply = format!("（{}）", e),
+                        },
+                        Err(e) => reply = format!("（启动 {} 失败：{}）", agent, e),
+                    }
+                    if reply.trim().is_empty() {
+                        reply = "（没有输出）".to_string();
+                    }
+
                     let body = format!(
                         "{{\"action\":\"agent_reply\",\"deviceCode\":\"{}\",\"id\":\"{}\",\"text\":\"{}\"}}",
                         esc(&code), gw_json_url(&id), esc(&reply)
                     );
-                    let _ = gw_call(&cfg.gw_url, &key, &body);
-                    continue;
+                    if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
+                        klog(&format!("    [agent] 回复失败: {}", e));
+                    }
                 }
 
-                let mut reply;
-                match agent_ensure(&agent, &exe) {
-                    Ok(_) => match agent_ask(&text, 90000) {
-                        Ok(raw) => reply = strip_ansi(&raw),
-                        Err(e) => reply = format!("（{}）", e),
-                    },
-                    Err(e) => reply = format!("（启动 {} 失败：{}）", agent, e),
+                // ---- 终端：拉取手机端按键 ----
+                for d in list_objects_in(&resp, "termIn") {
+                    let id = match doc_id(&d) { Some(x) => x, None => continue };
+                    let data = json_str(&d, "data").unwrap_or_default();
+                    if data.is_empty() { continue; }
+                    if ensure_term().is_ok() && term_write(&data).is_ok() {
+                        let ack = format!("{{\"action\":\"term_ack\",\"id\":\"{}\"}}", gw_json_url(&id));
+                        let _ = gw_call(&cfg.gw_url, &key, &ack);
+                    }
                 }
-                if reply.trim().is_empty() {
-                    reply = "（没有输出）".to_string();
-                }
-
-                let body = format!(
-                    "{{\"action\":\"agent_reply\",\"deviceCode\":\"{}\",\"id\":\"{}\",\"text\":\"{}\"}}",
-                    esc(&code), gw_json_url(&id), esc(&reply)
-                );
-                if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
-                    klog(&format!("    [agent] 回复失败: {}", e));
-                }
+            }
+            Err(e) => {
+                println!("  ! 轮询失败: {}", e);
+                thread::sleep(Duration::from_secs(3));
             }
         }
 
-        // ---- 终端：拉取手机端按键 ----
-        if let Ok(resp) = gw_call(&cfg.gw_url, &key, "{\"action\":\"term_in\"}") {
-            for d in list_objects(&resp) {
-                let id = match doc_id(&d) { Some(x) => x, None => continue };
-                let data = json_str(&d, "data").unwrap_or_default();
-                if data.is_empty() { continue; }
-                if ensure_term().is_ok() && term_write(&data).is_ok() {
-                    let ack = format!("{{\"action\":\"term_ack\",\"id\":\"{}\"}}", gw_json_url(&id));
-                    let _ = gw_call(&cfg.gw_url, &key, &ack);
-                }
+        // ---- 终端：推送新输出（每次循环都推，不再隔一轮）----
+        let (cur, chunk) = term_drain(last_term_seq);
+        if !chunk.is_empty() {
+            last_term_seq = cur;
+            let body = format!(
+                "{{\"action\":\"term_push\",\"deviceCode\":\"{}\",\"seq\":{},\"text\":\"{}\"}}",
+                esc(&code), cur, esc(&chunk)
+            );
+            if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
+                println!("  ! 终端输出推送失败: {}", e);
             }
+        } else {
+            last_term_seq = cur;
         }
-        // ---- 终端：推送新输出 ----
-        if tick % 2 == 0 {
-            let (cur, chunk) = term_drain(last_term_seq);
-            if !chunk.is_empty() {
-                last_term_seq = cur;
-                let body = format!(
-                    "{{\"action\":\"term_push\",\"deviceCode\":\"{}\",\"seq\":{},\"text\":\"{}\"}}",
-                    esc(&code), cur, esc(&chunk)
-                );
-                if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
-                    println!("  ! 终端输出推送失败: {}", e);
-                }
-            } else {
-                last_term_seq = cur;
-            }
-        }
-
-        thread::sleep(Duration::from_millis(1200));
+        // 不再固定 sleep 1200ms：sync 长轮询已承担等待；有数据时立刻进入下一轮
     }
 }
 
@@ -2178,8 +2165,7 @@ fn gw_handle(url: &str, key: &str, code: &str, cfg: &Config, doc: &str) {
         let args = agent_args(&who, &payload);
         klog(&format!("    [云端 agent] {} {:?}", who, args));
         println!("  ▷ {} {}", who, payload);
-        gw_update(url, key, &id, &format!(
-            "{{\"status\":\"running\",\"startedAt\":{},\"deviceCode\":\"{}\"}}", now_ms(), esc(code)));
+        // 不先回写 running：省一次云 RTT；执行中状态由小程序本地记录承担
         match run_headless(&who, &args, 180000) {
             Ok(raw) => {
                 let reply = strip_ansi(&raw);
@@ -2198,8 +2184,6 @@ fn gw_handle(url: &str, key: &str, code: &str, cfg: &Config, doc: &str) {
     }
 
     println!("  $ {}", payload);
-    gw_update(url, key, &id, &format!(
-        "{{\"status\":\"running\",\"startedAt\":{},\"deviceCode\":\"{}\"}}", now_ms(), esc(code)));
 
     // 全部交给常驻 Shell 顺序执行：cd / export / 环境状态都能延续，
     // 也不用再给 cd 写特判，更不会每条命令都新起一个进程。

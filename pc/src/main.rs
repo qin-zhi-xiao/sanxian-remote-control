@@ -1956,6 +1956,15 @@ fn run_gateway(mut cfg: Config) {
     }
     println!();
     println!("  正在轮询云端…  (Ctrl+C 退出)");
+
+    // 生成 6 位绑定确认码（首次启动随机；确认绑定后不再上报）
+    {
+        let mut cc = CONFIRM_CODE.lock().unwrap_or_else(|e| e.into_inner());
+        if cc.is_empty() {
+            *cc = format!("{:06}", (now_ms() as u64) % 1_000_000);
+        }
+        println!("  绑定确认码: {}（未绑定时在小程序「账号」页输入它完成绑定）", *cc);
+    }
     println!("==============================================");
 
     let mut hb_agents = agents_json(&agents);
@@ -1974,9 +1983,16 @@ fn run_gateway(mut cfg: Config) {
                 println!("  [扫描] 已重新识别 {} 个智能体", fresh.len());
             }
             let lan = local_ip().unwrap_or_default();
+            // 已绑定的设备不再上报确认码，让云端字段清干净
+            let bound = *IS_BOUND.lock().unwrap_or_else(|e| e.into_inner());
+            let cc_report = if bound {
+                String::new()
+            } else {
+                CONFIRM_CODE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            };
             let body = format!(
-                "{{\"action\":\"heartbeat\",\"deviceCode\":\"{}\",\"name\":\"{}\",\"agents\":{},\"lanIp\":\"{}\",\"lanPort\":{}}}",
-                esc(&code), esc(&hostname()), hb_agents, esc(&lan), cfg.port
+                "{{\"action\":\"heartbeat\",\"deviceCode\":\"{}\",\"name\":\"{}\",\"agents\":{},\"lanIp\":\"{}\",\"lanPort\":{},\"confirmCode\":\"{}\"}}",
+                esc(&code), esc(&hostname()), hb_agents, esc(&lan), cfg.port, esc(&cc_report)
             );
             if let Err(e) = gw_call(&cfg.gw_url, &key, &body) {
                 println!("  ! 心跳失败: {}", e);
@@ -1993,6 +2009,21 @@ fn run_gateway(mut cfg: Config) {
             Ok(resp) => {
                 for d in list_objects_in(&resp, "commands") {
                     gw_handle(&cfg.gw_url, &key, &code, &cfg, &d);
+                }
+
+                // ---- 绑定状态变化提示 ----
+                let now_bound = resp.contains("\"bound\":true");
+                {
+                    let mut was = IS_BOUND.lock().unwrap_or_else(|e| e.into_inner());
+                    if *was != now_bound {
+                        *was = now_bound;
+                        if now_bound {
+                            println!("  ✓ 设备已绑定到你的账号");
+                        } else {
+                            let cc = CONFIRM_CODE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                            println!("  ! 设备已解绑：小程序「账号」页输入确认码 {} 重新绑定", cc);
+                        }
+                    }
                 }
 
                 // ---- 终端：shell 切换 / 重启 ----
@@ -2991,6 +3022,11 @@ struct AgentSession {
 
 static AGENT: Mutex<Option<AgentSession>> = Mutex::new(None);
 static AGENT_GEN: Mutex<u64> = Mutex::new(0);
+
+/// 设备绑定确认码：未绑定时显示在控制台并随心跳上报，小程序「账号」页输码完成绑定
+static CONFIRM_CODE: Mutex<String> = Mutex::new(String::new());
+/// 绑定状态（由 sync 响应的 bound 字段驱动，用于状态变化提示与停止上报确认码）
+static IS_BOUND: Mutex<bool> = Mutex::new(false);
 
 fn agent_reset() {
     if let Ok(mut g) = AGENT.lock() {

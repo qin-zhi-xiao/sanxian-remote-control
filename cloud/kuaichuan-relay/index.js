@@ -65,6 +65,8 @@ async function handle(req) {
         if (ra && typeof ra === 'object') ra = ra.$numberLong !== undefined ? ra.$numberLong : ra.$numberInt;
         out.shell = d.termShell || 'gitbash';
         out.restartAt = Number(ra) || 0;
+        out.bound = !!d.owner;
+        out.confirmCode = d.confirmCode || '';
       }
       if (cmds.length || termIn.length || agentIn.length) break;
       if (!hold) break;
@@ -82,7 +84,7 @@ async function handle(req) {
   if (a === 'heartbeat') {
     const code = req.deviceCode;
     if (!code) return { ok: false, error: 'missing deviceCode' };
-    const payload = { deviceCode: code, name: req.name || '', lastSeen: Date.now(), agents: req.agents || [] };
+    const payload = { deviceCode: code, name: req.name || '', lastSeen: Date.now(), agents: req.agents || [], confirmCode: req.confirmCode || '' };
     const q = encodeURIComponent(JSON.stringify({ deviceCode: code }));
     const f = await db('GET', '/collections/' + DEV + '/documents?query=' + q + '&limit=1');
     const l = f.list || [];

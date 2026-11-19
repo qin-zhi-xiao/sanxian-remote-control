@@ -126,14 +126,29 @@ Page({
   claimDevice: function (e) {
     var self = this;
     var code = e.currentTarget.dataset.code;
-    wx.showLoading({ title: '绑定中…' });
-    relay.deviceClaim(code).then(function () {
-      wx.hideLoading();
-      wx.showToast({ title: '已绑定', icon: 'success' });
-      self.reloadDevices();
-    }).catch(function (err) {
-      wx.hideLoading();
-      wx.showToast({ title: (err && err.message) || '绑定失败', icon: 'none' });
+    wx.showModal({
+      title: '绑定这台电脑？',
+      content: '输入电脑端程序窗口显示的 6 位绑定确认码',
+      editable: true,
+      placeholderText: '6 位数字确认码',
+      confirmText: '绑定',
+      success: function (r) {
+        if (!r.confirm) return;
+        var cc = (r.content || '').trim();
+        if (!/^\d{6}$/.test(cc)) {
+          wx.showToast({ title: '确认码是 6 位数字', icon: 'none' });
+          return;
+        }
+        wx.showLoading({ title: '绑定中…' });
+        relay.deviceClaim(code, cc).then(function () {
+          wx.hideLoading();
+          wx.showToast({ title: '已绑定', icon: 'success' });
+          self.reloadDevices();
+        }).catch(function (err) {
+          wx.hideLoading();
+          wx.showToast({ title: (err && err.message) || '绑定失败', icon: 'none' });
+        });
+      }
     });
   },
 

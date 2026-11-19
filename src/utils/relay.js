@@ -209,8 +209,8 @@ function deviceDelete(deviceCode) {
 function deviceRename(deviceCode, name) {
   return call('device_rename', { deviceCode: deviceCode, name: name });
 }
-function claimDevice(deviceCode) {
-  return call('device_claim', { deviceCode: deviceCode });
+function claimDevice(deviceCode, confirmCode) {
+  return call('device_claim', { deviceCode: deviceCode, confirmCode: confirmCode || '' });
 }
 function cloudProbe() {
   return new Promise(function (resolve) {

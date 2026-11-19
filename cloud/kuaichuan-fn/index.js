@@ -7,6 +7,20 @@ const BASE = 'https://' + ENV + '.api.tcloudbasegateway.com/v1/database/instance
 const CMD = 'commands';
 const DEV = 'devices';
 
+// 设备归属校验：已绑定设备只能由归属账号投递；未绑定设备提示先完成绑定。
+// 返回空串表示放行，否则为拒绝原因。
+async function assertDeviceOwner(deviceCode, me) {
+  if (!deviceCode) return '缺 deviceCode';
+  if (!me) return '先登录后再操作设备';
+  const q = encodeURIComponent(JSON.stringify({ deviceCode: deviceCode }));
+  const fr = await db('GET', '/collections/' + DEV + '/documents?query=' + q + '&limit=1');
+  const hit = (fr.list || [])[0];
+  if (!hit) return '这台电脑还没上线，先让 exe 跑起来';
+  if (!hit.owner) return '这台电脑还没绑定账号：请在「账号」页输入绑定确认码';
+  if (hit.owner !== me.uid) return '这台电脑绑定在其他账号下';
+  return '';
+}
+
 // 推送通道配置
 //
 // ⚠️ 小程序订阅消息在这个环境用不了：
@@ -392,6 +406,9 @@ async function findUser(query) {
       return { ok: true, svc: 'kuaichuan-fn', sdk: 'fetch', env: ENV, dbOk: !p.code };
     }
     if (a === 'send') {
+      const me0 = await currentUser();
+      const deny0 = await assertDeviceOwner(event.deviceCode || '', me0);
+      if (deny0) return { ok: false, error: deny0 };
       const doc = { deviceCode: event.deviceCode || '', kind: event.kind || 'shell', payload: event.payload || '',
         status: 'pending', createdAt: Date.now(), stdout: '', stderr: '', exitCode: null };
       const r = await db('POST', '/collections/' + CMD + '/documents', { data: [doc] });
@@ -466,9 +483,14 @@ async function findUser(query) {
       const hit = (fr.list || [])[0];
       if (!hit) return { ok: false, error: '这台电脑还没上线，先让 exe 跑起来' };
       if (hit.owner && hit.owner !== me.uid) return { ok: false, error: '这台电脑已被其他账号绑定' };
+      // 绑定确认码校验：exe 未绑定时会在控制台显示 6 位确认码并随心跳上报；
+      // 云端有记录就必须匹配，防止「只知道配对码」的人抢绑。
+      if (hit.confirmCode && String(event.confirmCode || '') !== String(hit.confirmCode)) {
+        return { ok: false, error: '绑定确认码不正确（看电脑端程序窗口）' };
+      }
       await db('PATCH', '/collections/' + DEV + '/documents', {
         query: { _id: hit._id },
-        data: { $set: { owner: me.uid, claimedAt: Date.now() } },
+        data: { $set: { owner: me.uid, claimedAt: Date.now(), confirmCode: '' } },
       });
       return { ok: true, deviceCode: code };
     }
@@ -567,7 +589,10 @@ async function findUser(query) {
       return { ok: true };
     }
     if (a === 'term_send') {
-      // 手机端：把按键/一行命令发给电脑
+      // 手机端：把按键/一行命令发给电脑（须为已绑定归属设备）
+      const meT = await currentUser();
+      const denyT = await assertDeviceOwner(event.deviceCode || '', meT);
+      if (denyT) return { ok: false, error: denyT };
       const doc = { deviceCode: event.deviceCode || '', data: event.data || '', status: 'pending', createdAt: Date.now() };
       const r = await db('POST', '/collections/term_in_4759588622381809665/documents', { data: [doc] });
       return { ok: true, id: (r.insertedIds && r.insertedIds[0]) || '' };
@@ -630,6 +655,9 @@ async function findUser(query) {
     return { ok: true, list: r.list || [] };
   }
   if (a === 'agent_send') {
+    const meA = await currentUser();
+    const denyA = await assertDeviceOwner(event.deviceCode || '', meA);
+    if (denyA) return { ok: false, error: denyA };
     const doc = {
       deviceCode: event.deviceCode || '', agent: event.agent || 'claude', exe: event.exe || event.agent || 'claude',
       text: event.text || '', headless: event.headless || '0', status: 'pending', createdAt: Date.now(),

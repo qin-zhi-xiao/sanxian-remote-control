@@ -219,6 +219,36 @@
       "type": "file",
       "name": "pages/terminal/terminal.wxss",
       "parent": "pages/terminal"
+    },
+    {
+      "type": "dir",
+      "name": "components",
+      "parent": ""
+    },
+    {
+      "type": "dir",
+      "name": "components/kctabs",
+      "parent": "components"
+    },
+    {
+      "type": "file",
+      "name": "components/kctabs/kctabs.js",
+      "parent": "components/kctabs"
+    },
+    {
+      "type": "file",
+      "name": "components/kctabs/kctabs.json",
+      "parent": "components/kctabs"
+    },
+    {
+      "type": "file",
+      "name": "components/kctabs/kctabs.wxml",
+      "parent": "components/kctabs"
+    },
+    {
+      "type": "file",
+      "name": "components/kctabs/kctabs.wxss",
+      "parent": "components/kctabs"
     }
   ]
 }

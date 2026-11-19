@@ -11,8 +11,9 @@ Page({
     shell: ''
   },
 
-  onLoad: function () {
+  onLoad: function (options) {
     var self = this;
+    this.setData({ sid: (options && options.sid) || 't1' });
     relay.termGetShell().then(function (r) {
       self.setData({ shell: (r && r.shell) || '' });
     }).catch(function () {});

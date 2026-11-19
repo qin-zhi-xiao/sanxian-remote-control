@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "终端"
+  "navigationBarTitleText": "终端",
+  "usingComponents": {
+    "kctabs": "/components/kctabs/kctabs"
+  }
 }

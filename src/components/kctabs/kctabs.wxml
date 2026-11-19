@@ -1,0 +1,12 @@
+<view class="kt">
+  <view class="kt-tab {{active === 'status' ? 'on' : ''}}" data-t="status" bindtap="tapTab">
+    <text>状态</text>
+  </view>
+  <view class="kt-tab {{active === item.type + ':' + item.id ? 'on' : ''}}"
+        wx:for="{{sessions}}" wx:key="id"
+        data-t="{{item}}" bindtap="tapTab">
+    <text class="kt-t">{{item.title}}</text>
+    <text class="kt-x" data-id="{{item.id}}" catchtap="closeTab">×</text>
+  </view>
+  <view class="kt-add" bindtap="addTab">＋</view>
+</view>

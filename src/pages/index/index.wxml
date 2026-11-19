@@ -83,6 +83,7 @@
 
 <!-- 第二阶段：欢迎页（配置成功后） -->
 <view class="screen" wx:else>
+  <kctabs active="status" />
   <view class="stack">
     <view class="title-lg" style="text-align:center">今天如何开始？</view>
     <view class="sub" style="text-align:center;margin-top:12rpx">

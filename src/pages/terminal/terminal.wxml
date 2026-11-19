@@ -1,4 +1,5 @@
 <view class="term">
+  <kctabs active="terminal:{{sid}}" />
   <scroll-view class="out" scroll-y scroll-into-view="{{anchor}}">
     <view class="row {{item.kind}}" wx:for="{{log}}" wx:key="k"><text class="txt">{{item.kind === 'cmd' ? '$ ' : ''}}{{item.text}}</text></view>
     <view id="end" style="height:40rpx"></view>

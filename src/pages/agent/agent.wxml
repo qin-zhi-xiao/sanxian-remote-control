@@ -1,4 +1,5 @@
 <view class="chat">
+  <kctabs active="agent:{{sid}}" />
   <!-- 左侧会话栏（抽屉） -->
   <view class="drawer-mask" wx:if="{{drawerOpen}}" bindtap="closeDrawer"></view>
   <view class="drawer {{drawerOpen ? 'drawer-open' : ''}}">

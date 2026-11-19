@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "快传"
+  "navigationBarTitleText": "快传",
+  "usingComponents": {
+    "kctabs": "/components/kctabs/kctabs"
+  }
 }

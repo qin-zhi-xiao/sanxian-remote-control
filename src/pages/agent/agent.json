@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "Agent"
+  "navigationBarTitleText": "Agent",
+  "usingComponents": {
+    "kctabs": "/components/kctabs/kctabs"
+  }
 }

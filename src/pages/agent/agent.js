@@ -56,7 +56,8 @@ Page({
     anchor: 'end'
   },
 
-  onLoad: function () {
+  onLoad: function (options) {
+    this.setData({ sid: (options && options.sid) || 'a1' });
     var saved = wx.getStorageSync(STORE);
     if (saved && saved.length) {
       this.setData({

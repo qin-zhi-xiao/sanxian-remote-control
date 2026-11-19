@@ -41,13 +41,26 @@
 
 ## 📥 下载
 
-**Windows 客户端**（单文件，免安装，v1.5.0 约 414 KB / 423,424 字节）
+**推荐：完整分发包**（解压即用，无需任何配置）
 
-- [kuaichuan.exe（v1.5.0）](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0.exe)
-- [zip 打包版](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0-win64.zip)
+- [kuaichuan-v1.5.0-win64.zip](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0-win64.zip)
 
-> 发布包**不含密钥**。首次使用请把 `.cloudbase-apikey`（云开发 API Key）
-> 放到 exe 同目录再启动，否则网关返回 401。
+解压后双击 `启动快传.cmd`，三步上手：
+
+1. 程序窗口显示 6 位配对码（首次随机生成，自动记住）
+2. 手机打开「快传」小程序，输入配对码即可连接
+3. 桌面快捷方式自动创建；关窗口即退出
+
+> 包内含 `kuaichuan.exe`（约 410 KB）+ 启动脚本 + 服务密钥。网关地址已内置，双击 exe 也能直接跑。
+> 网关模式会同时开一个本地网页控制台（自动在浏览器打开），电脑上也能看状态。
+>
+> 单文件 [kuaichuan.exe](https://raw.githubusercontent.com/qin-zhi-xiao/sanxian-remote-control/main/releases/kuaichuan-v1.5.0.exe)
+> 也可用（网关地址已内置），但需自备 `.cloudbase-apikey` 密钥文件放同目录。
+
+### 安全说明
+
+服务密钥随分发包公开分发（教育版竞赛环境，数据均为演示数据）；电脑端的操作受
+**配对码 + 账号设备绑定验证**保护（v1.6 起），拿到密钥不等于能操作别人的电脑。
 
 ### 首次使用
 

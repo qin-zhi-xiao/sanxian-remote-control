@@ -31,6 +31,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 const VERSION: &str = "1.5.0";
 
+/// 项目自带的云函数网关（教育版环境）。用户不传 --gw 时用它，开箱即用。
+const DEFAULT_GW: &str = "https://eval-lifecycle-d7gf433u22f6c2405-1520376176.ap-shanghai.app.tcloudbase.com/kuaichuan";
+
 /// 进程启动时间（毫秒时间戳），控制台用来算运行时长
 static START_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
@@ -402,6 +405,12 @@ fn main() {
     }
 
     START_MS.store(now_ms() as u64, std::sync::atomic::Ordering::Relaxed);
+
+    // 开箱即用：不带任何模式参数时默认走云网关模式（run_gateway 里会补默认网关地址）。
+    // 否则双击 exe 会进入只有本机能访问的本地模式，手机根本连不上。
+    if !cfg.gw && !cfg.cloud {
+        cfg.gw = true;
+    }
 
     if cfg.gw {
         // 云端模式也要有个本地控制台：一个进程干两件事，
@@ -1654,8 +1663,9 @@ fn run_cloud(cfg: Config) {
         read_trim(&dir.join(".cloudbase-apikey")).unwrap_or_default()
     };
     if key.is_empty() {
-        eprintln!("找不到 API Key。");
-        eprintln!("把 .cloudbase-apikey 放到 exe 同目录，或用 --apikey 传入。");
+        eprintln!("没找到服务密钥（.cloudbase-apikey）。");
+        eprintln!("请下载完整 zip 分发包（内含密钥文件，解压后双击\"启动快传.cmd\"即可），");
+        eprintln!("或把 .cloudbase-apikey 放到本 exe 同目录 / 用 --apikey 传入。");
         return;
     }
 
@@ -1901,7 +1911,7 @@ fn gw_json_url(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-fn run_gateway(cfg: Config) {
+fn run_gateway(mut cfg: Config) {
     let dir = exe_dir();
     let key = if !cfg.api_key.is_empty() {
         cfg.api_key.clone()
@@ -1909,7 +1919,9 @@ fn run_gateway(cfg: Config) {
         read_trim(&dir.join(".cloudbase-apikey")).unwrap_or_default()
     };
     if key.is_empty() {
-        eprintln!("找不到 API Key：把 .cloudbase-apikey 放 exe 同目录，或用 --apikey 传入");
+        eprintln!("没找到服务密钥（.cloudbase-apikey）。");
+        eprintln!("请下载完整 zip 分发包（内含密钥文件，解压后双击\"启动快传.cmd\"即可），");
+        eprintln!("或把 .cloudbase-apikey 放到本 exe 同目录 / 用 --apikey 传入。");
         return;
     }
     let code = if !cfg.device_code.is_empty() {
@@ -1919,8 +1931,8 @@ fn run_gateway(cfg: Config) {
     };
     let _ = std::fs::write(dir.join(".device-code"), &code);
     if cfg.gw_url.is_empty() {
-        eprintln!("缺少网关地址，用法: kuaichuan.exe --gw https://xxx/v1/functions/kuaichuan-relay");
-        return;
+        // 开箱即用：不带 --gw 时走项目默认网关
+        cfg.gw_url = DEFAULT_GW.to_string();
     }
 
     println!("==============================================");

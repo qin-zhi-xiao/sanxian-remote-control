@@ -396,6 +396,11 @@ fn main() {
 
     // 令牌优先级：显式 --token > 配对码 --code > 随机
     // 用配对码当令牌，小程序拿到设备记录就能连着直连局域网，不用额外记一串码
+    // 先读持久化的配对码（与 run_gateway 同逻辑），否则无参数启动时 device_code 还是空，
+    // 会走随机 token —— 自动弹出的控制台 URL 每次都变，用户根本进不去。
+    if cfg.device_code.is_empty() {
+        cfg.device_code = read_trim(&exe_dir().join(".device-code")).unwrap_or_default();
+    }
     if cfg.token.is_empty() {
         if !cfg.device_code.is_empty() {
             cfg.token = cfg.device_code.clone();
@@ -406,10 +411,13 @@ fn main() {
 
     START_MS.store(now_ms() as u64, std::sync::atomic::Ordering::Relaxed);
 
-    // 开箱即用：不带任何模式参数时默认走云网关模式（run_gateway 里会补默认网关地址）。
+    // 开箱即用：不带任何模式参数时默认走云网关模式（自带默认网关地址）。
     // 否则双击 exe 会进入只有本机能访问的本地模式，手机根本连不上。
     if !cfg.gw && !cfg.cloud {
         cfg.gw = true;
+        // 控制台线程在 run_gateway 之前就克隆了 cfg，网关地址要在这里补齐，
+        // 否则控制台会显示 mode=local、gateway 为空
+        cfg.gw_url = DEFAULT_GW.to_string();
     }
 
     if cfg.gw {

@@ -296,24 +296,26 @@ fn main() {
     unsafe {
         // 关键：本进程不能持有控制台，否则子进程会继承它而不是伪终端
         pty::FreeConsole();
-        // 放开之后立刻挂回父控制台，否则后面所有 println! 都进了黑洞，
-        // 用户在 PowerShell 里看不到任何启动信息和报错
-        if pty::AttachConsole(u32::MAX) != 0 {
-            // Rust 的 println! 走 GetStdHandle，不是 CRT 的 fd，
-            // 所以必须用 SetStdHandle 换掉标准输出句柄，dup2 没用
-            let h = pty::CreateFileA(
-                b"CONOUT$\0".as_ptr(),
-                0x8000_0000 | 0x4000_0000, // GENERIC_READ|GENERIC_WRITE
-                1 | 2,                     // FILE_SHARE_READ|WRITE
-                core::ptr::null_mut(),
-                3,                         // OPEN_EXISTING
-                0,
-                core::ptr::null_mut(),
-            );
-            if h != core::ptr::null_mut() && h as isize != -1 {
-                pty::SetStdHandle(0xFFFF_FFF5, h); // STD_OUTPUT_HANDLE
-                pty::SetStdHandle(0xFFFF_FFF4, h); // STD_ERROR_HANDLE
-            }
+        // 无论什么启动方式（双击 exe / 双击启动器 cmd / 命令行），都把
+        // stdout/stderr 指向 exe 同目录的 run.log：
+        //  - 双击启动器时，cmd 窗口几秒后关闭，挂在它上面的 stdout 句柄失效，
+        //    第一次 println! 就写失败 panic，进程悄悄消失——这就是
+        //    「双击启动后几秒就退出、控制台打不开」的根因；
+        //  - run.log 超 4MB 自动轮换；用户的真正界面是自动弹出的网页控制台。
+        let dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_default();
+        let log = dir.join("run.log");
+        if std::fs::metadata(&log).map(|m| m.len() > 4_000_000).unwrap_or(false) {
+            let _ = std::fs::remove_file(&log);
+        }
+        if let Ok(f) = std::fs::OpenOptions::new().create(true).append(true).open(&log) {
+            let h = std::os::windows::io::AsRawHandle::as_raw_handle(&f);
+            pty::SetStdHandle(0xFFFF_FFF5, h as _); // STD_OUTPUT_HANDLE
+            pty::SetStdHandle(0xFFFF_FFF4, h as _); // STD_ERROR_HANDLE
+            // 文件句柄必须活得和进程一样长，故意泄漏
+            std::mem::forget(f);
         }
     }
     let mut cfg = Config {
@@ -1964,6 +1966,22 @@ fn run_gateway(mut cfg: Config) {
         agents.iter().map(|a| format!("{} {}", a.name, a.version)).collect::<Vec<_>>().join(" / ")
     });
     println!();
+
+    // 每次启动都把桌面「快传.lnk」刷新为指向当前这个 exe：
+    // 历史教训——快捷方式一旦指向旧构建（如 kuaichuan-app.exe），用户天天双击的都是旧版，
+    // 旧版的行为差异（如 spawn explorer 弹崩溃框）会被误认为新版的 bug。
+    {
+        let self_exe = std::env::current_exe().unwrap_or_default();
+        let ps = format!(
+            "$w=New-Object -ComObject WScript.Shell; $s=$w.CreateShortcut([Environment]::GetFolderPath('Desktop')+'\\快传.lnk'); $s.TargetPath='{}'; $s.WorkingDirectory='{}'; $s.Save()",
+            self_exe.to_string_lossy(),
+            dir.to_string_lossy()
+        );
+        let mut c = Command::new("powershell");
+        c.args(["-NoProfile", "-Command", &ps]);
+        no_window(&mut c);
+        let _ = c.spawn();
+    }
 
     // 自检
     match gw_call(&cfg.gw_url, &key, "{\"action\":\"ping\"}") {

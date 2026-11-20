@@ -457,8 +457,16 @@ fn main() {
                         }
                         println!("  └─────────────────────────────────────────");
                         // 顺手把控制台在默认浏览器里打开：
-                        // 走 explorer 而不是 cmd/start，这样不会闪一个黑窗口出来。
-                        let _ = Command::new("explorer").arg(&console_url).spawn();
+                        // 走 cmd /c start 而不是直接 spawn explorer——
+                        // 有机器上 explorer 被 shell 扩展/注入搞坏时会弹
+                        // 「应用程序无法正常启动(0xc0000142)」，cmd start 走
+                        // ShellExecute 链路更稳，也避免 GUI 崩溃弹窗打扰用户。
+                        {
+                            let mut c = Command::new("cmd");
+                            c.args(["/C", "start", "", &console_url]);
+                            no_window(&mut c);
+                            let _ = c.spawn();
+                        }
                         for s in l.incoming() {
                             if let Ok(s) = s {
                                 let a = app_srv.clone();
